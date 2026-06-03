@@ -11,7 +11,8 @@ from pymongo import MongoClient
 from typing import Optional, Dict, Any
 from dotenv import load_dotenv
 from groq import Groq
-import fitz  # PyMuPDF
+from pypdf import PdfReader  # Pure Python PDF reader
+import io
 import base64
 from datetime import datetime
 
@@ -183,11 +184,10 @@ def should_send_email(patient_email: str):
 # -------------------------
 def extract_text_from_pdf(file_bytes: bytes) -> str:
     try:
-        doc = fitz.open(stream=file_bytes, filetype="pdf")
+        reader = PdfReader(io.BytesIO(file_bytes))
         text = ""
-        for page in doc:
-            text += page.get_text()
-        doc.close()
+        for page in reader.pages:
+            text += page.extract_text() or ""
         return text
     except Exception as e:
         print(f"PDF extraction error: {e}")
