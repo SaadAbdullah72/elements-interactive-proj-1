@@ -197,14 +197,14 @@ const DoctorLogin = ({ onLoginSuccess }) => {
 
         /* ── CONTENT (white strip below hero) ── */
         .content {
-          padding: 40px 44px 20px;
+          padding: 20px 44px 20px;
           display: flex;
           align-items: flex-start;
           justify-content: flex-start;
           background: white;
           position: relative;
           z-index: 10;
-          min-height: 260px;
+          min-height: 240px;
         }
 
         .welcome-text {
@@ -218,7 +218,7 @@ const DoctorLogin = ({ onLoginSuccess }) => {
         .arrow-wrap {
           position: absolute;
           right: 440px;
-          top: 40px;
+          top: 20px;
           z-index: 31;
           display: flex;
           align-items: center;
