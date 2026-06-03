@@ -202,9 +202,9 @@ const DoctorLogin = ({ onLoginSuccess }) => {
           align-items: flex-start;
           justify-content: flex-start;
           background: white;
-          flex: 1;
           position: relative;
           z-index: 10;
+          min-height: 240px;
         }
 
         .welcome-text {
