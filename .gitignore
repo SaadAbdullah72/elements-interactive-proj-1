@@ -18,3 +18,6 @@ __pycache__/
 .env*.zip
 
 *.zip
+
+!vercel.json
+!package.json
