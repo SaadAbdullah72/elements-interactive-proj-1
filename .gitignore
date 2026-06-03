@@ -1,0 +1,20 @@
+﻿# Datasets
+*.csv
+*.xml
+!frontend/public/sitemap.xml
+*.json
+faers_*
+
+# Large folders
+data/
+datasets/
+faers_xml_2025Q4/
+
+# Python
+__pycache__/
+*.pyc
+
+# Env
+.env*.zip
+
+*.zip
