@@ -25,7 +25,7 @@ const DoctorLogin = ({ onLoginSuccess }) => {
   const [success, setSuccess]         = useState('');
   const [infoMessage, setInfoMessage] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [loginForm, setLoginForm]     = useState({ name: DEFAULT_NAME, password: DEFAULT_PASSWORD });
+  const [loginForm, setLoginForm]     = useState({ name: '', password: '' });
 
   const handleChange = (e) => {
     const { name, value } = e.target;
