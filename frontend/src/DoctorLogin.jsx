@@ -218,7 +218,7 @@ const DoctorLogin = ({ onLoginSuccess }) => {
         .arrow-wrap {
           position: absolute;
           right: 440px;
-          top: 8px;
+          top: 2px;
           z-index: 31;
           display: flex;
           align-items: center;
@@ -299,8 +299,21 @@ const DoctorLogin = ({ onLoginSuccess }) => {
             border-radius: 18px;
             z-index: 40;
           }
-          .content { padding: 140px 18px 26px; }
-          .arrow-wrap, .dapp-logo-content { display: none; }
+          .content {
+            padding: 140px 18px 26px;
+            flex-direction: column;
+            align-items: flex-start;
+          }
+          .arrow-wrap {
+            position: relative;
+            right: auto;
+            top: auto;
+            margin: 30px auto 0;
+            display: flex;
+            justify-content: center;
+            width: 100%;
+          }
+          .dapp-logo-content { display: none; }
           .bottom-left-decoration { position: absolute; bottom: -10px; left: 0; width: 100px; height: auto; z-index: 50; opacity: 1; }
           .footer { padding: 14px 18px; }
           .login-title { font-size: 18px; margin-bottom: 14px; }
