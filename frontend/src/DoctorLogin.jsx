@@ -389,8 +389,8 @@ const DoctorLogin = ({ onLoginSuccess }) => {
           <div className="arrow-wrap" style={{ display: 'flex', justifyContent: 'center' }}>
             <img src={ARROW_IMG} alt=""
               style={{ 
-                width: '214px', 
-                height: '361px', 
+                height: '200px', 
+                width: 'auto', 
                 display: 'block',
                 background: 'transparent',
                 objectFit: 'contain'
