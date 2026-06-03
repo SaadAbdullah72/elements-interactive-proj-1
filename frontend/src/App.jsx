@@ -147,35 +147,35 @@ function App() {
         )}
       </div>
 
-      {/* Global footer links appear on all screens. Disclaimer appears on all but login. */}
-      <footer
-        className="global-footer"
-        style={{
-          padding: '14px 16px',
-          textAlign: 'center',
-          background: '#ffffff',
-          flexShrink: 0,
-          borderTop: '1px solid #f0f0f0',
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'center',
-          gap: '8px',
-          alignItems: 'center'
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', flexWrap: 'wrap' }}>
-          <a href="#" style={{ color: '#6b7280', textDecoration: 'none' }}>Privacy Statement</a>
-          <span style={{ color: '#d1d5db' }}>•</span>
-          <a href="#" style={{ color: '#6b7280', textDecoration: 'none' }}>Terms and Conditions</a>
-          <span style={{ color: '#d1d5db' }}>•</span>
-          <a href="#" style={{ color: '#6b7280', textDecoration: 'none' }}>Helpline</a>
-        </div>
-        {currentScreen !== 'login' && (
+      {/* Global footer — hidden on login since login has its own */}
+      {currentScreen !== 'login' && (
+        <footer
+          className="global-footer"
+          style={{
+            padding: '14px 16px',
+            textAlign: 'center',
+            background: '#ffffff',
+            flexShrink: 0,
+            borderTop: '1px solid #f0f0f0',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'center',
+            gap: '8px',
+            alignItems: 'center'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <a href="#" style={{ color: '#6b7280', textDecoration: 'none' }}>Privacy Statement</a>
+            <span style={{ color: '#d1d5db' }}>•</span>
+            <a href="#" style={{ color: '#6b7280', textDecoration: 'none' }}>Terms and Conditions</a>
+            <span style={{ color: '#d1d5db' }}>•</span>
+            <a href="#" style={{ color: '#6b7280', textDecoration: 'none' }}>Helpline</a>
+          </div>
           <div style={{ color: '#6b7280', fontSize: '12px', whiteSpace: 'nowrap' }}>
             This tool provides guideline-aligned suggestions only. The final diagnosis, treatment plan, and prescription are the sole responsibility of the licensed treating physician
           </div>
-        )}
-      </footer>
+        </footer>
+      )}
 
     </div>
   );
