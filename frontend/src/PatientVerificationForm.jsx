@@ -294,7 +294,8 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setShowAddPatientModal(true)}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-semibold transition-colors shadow-sm"
+                  className="flex items-center gap-1.5 px-4 py-2 text-white rounded-xl text-xs font-semibold transition-all shadow-md hover:shadow-lg hover:-translate-y-0.5"
+                  style={{ background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)' }}
                 >
                   <FiPlus size={14} /> Add Patient
                 </button>
@@ -488,7 +489,7 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
 
                     <div className="flex gap-3 pt-1">
                       <button type="button" onClick={() => setShowAddPatientModal(false)} className="flex-1 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-semibold text-sm transition-colors">Cancel</button>
-                      <button type="submit" disabled={isLoading} className="flex-1 py-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-semibold text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-sm">
+                      <button type="submit" disabled={isLoading} className="flex-1 py-3 text-white rounded-xl font-bold text-sm transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-md hover:shadow-lg hover:-translate-y-0.5" style={{ background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)' }}>
                         {isLoading ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Adding...</> : <><FiCheckCircle size={15} /> Add Patient</>}
                       </button>
                     </div>
