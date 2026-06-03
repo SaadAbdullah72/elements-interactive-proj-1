@@ -218,7 +218,7 @@ const DoctorLogin = ({ onLoginSuccess }) => {
         .arrow-wrap {
           position: absolute;
           right: 440px;
-          top: -1px;
+          top: 8px;
           z-index: 31;
           display: flex;
           align-items: center;
