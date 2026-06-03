@@ -401,6 +401,13 @@ const DoctorLogin = ({ onLoginSuccess }) => {
 
         {/* ── FOOTER ── */}
         <footer className="footer">
+          <div className="footer-links">
+            <a href="#">Privacy Statement</a>
+            <span>•</span>
+            <a href="#">Terms and Conditions</a>
+            <span>•</span>
+            <a href="#">Helpline</a>
+          </div>
         </footer>
 
         <img src={BOTTOM_LEFT_IMG} alt="" className="bottom-left-decoration" />
