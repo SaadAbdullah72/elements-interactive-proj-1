@@ -385,16 +385,15 @@ const DoctorLogin = ({ onLoginSuccess }) => {
             deep-learning enabled, clinical assistance tool.
           </p>
 
-          {/* Arrow (Purple Logo) — keep the logo colorful without adding extra background */}
-          <div className="arrow-wrap">
+          {/* Arrow (Purple Logo) */}
+          <div className="arrow-wrap" style={{ display: 'flex', justifyContent: 'center' }}>
             <img src={ARROW_IMG} alt=""
               style={{ 
-                height: '200px', 
-                width: 'auto', 
+                width: '214px', 
+                height: '361px', 
                 display: 'block',
                 background: 'transparent',
-                filter: 'saturate(1.2) contrast(1.3) brightness(0.85)',
-                mixBlendMode: 'darken',
+                objectFit: 'contain'
               }} />
           </div>
         </section>
