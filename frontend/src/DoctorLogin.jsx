@@ -204,7 +204,7 @@ const DoctorLogin = ({ onLoginSuccess }) => {
           background: white;
           position: relative;
           z-index: 10;
-          min-height: 240px;
+          min-height: 300px;
         }
 
         .welcome-text {
@@ -218,7 +218,7 @@ const DoctorLogin = ({ onLoginSuccess }) => {
         .arrow-wrap {
           position: absolute;
           right: 440px;
-          top: 2px;
+          top: 60px;
           z-index: 31;
           display: flex;
           align-items: center;
