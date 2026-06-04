@@ -488,287 +488,281 @@ const IntelliHealthInterface = ({ patientData, onBack, onLogout }) => {
 
         {/* Patient Information Card */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-50 flex items-center gap-3">
-            <div className="w-8 h-8 rounded-xl bg-purple-50 flex items-center justify-center">
-              <FiUser className="text-purple-500" size={15} />
+          <div className="px-5 py-3 border-b border-gray-50 flex items-center gap-3">
+            <div className="w-6 h-6 rounded-lg bg-purple-50 flex items-center justify-center">
+              <FiUser className="text-purple-500" size={12} />
             </div>
             <p className="font-semibold text-gray-800 text-sm">Patient Information</p>
           </div>
-          <div className="p-5">
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
+          <div className="p-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 mb-4">
               {[
-                { label: 'Patient ID', name: 'patid', placeholder: 'Patient ID' },
-                { label: 'Case ID', name: 'caseid', placeholder: 'Case ID' },
-                { label: 'Patient Name', name: 'pname', placeholder: 'Name' },
-                { label: 'Age', name: 'age', type: 'number', placeholder: 'Age' },
-                { label: 'Patient Email', name: 'patient_email', type: 'email', placeholder: 'Email' }
+                { label: 'PATIENT ID', name: 'patid', placeholder: 'Patient ID' },
+                { label: 'CASE ID', name: 'caseid', placeholder: 'Case ID' },
+                { label: 'PATIENT NAME', name: 'pname', placeholder: 'Name' },
+                { label: 'AGE', name: 'age', type: 'number', placeholder: 'Age' },
+                { label: 'PATIENT EMAIL', name: 'patient_email', type: 'email', placeholder: 'Email' }
               ].map(field => (
                 <div key={field.name}>
-                  <label className={labelClass}>{field.label}</label>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">{field.label}</label>
                   <input
                     type={field.type || 'text'}
                     name={field.name}
                     value={editableData[field.name]}
                     onChange={handleChange}
                     placeholder={field.placeholder}
-                    className={inputClass}
+                    className="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-transparent transition-all text-gray-800 text-sm shadow-sm placeholder-gray-400"
                   />
                 </div>
               ))}
             </div>
 
             {/* Upload Buttons */}
-            <div className="flex justify-center gap-3 pt-2 border-t border-gray-50">
-              <label className="flex items-center gap-2 px-4 py-2 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-xl cursor-pointer text-xs font-semibold transition-colors">
-                <FiUpload size={13} /> Upload PDF Report
+            <div className="flex justify-center gap-4 pt-2">
+              <label className="flex items-center gap-2 px-5 py-2 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-xl cursor-pointer text-xs font-semibold transition-colors">
+                <FiUpload size={14} /> Upload PDF Report
                 <input type="file" onChange={handlePdfUpload} accept=".pdf" className="hidden" />
               </label>
-              <label className="flex items-center gap-2 px-4 py-2 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-xl cursor-pointer text-xs font-semibold transition-colors">
-                <FiImage size={13} /> Upload Image
+              <label className="flex items-center gap-2 px-5 py-2 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-xl cursor-pointer text-xs font-semibold transition-colors">
+                <FiImage size={14} /> Upload Image
                 <input type="file" onChange={handleImageUpload} accept="image/*" className="hidden" />
               </label>
             </div>
           </div>
         </div>
 
-        {/* Query Input Section */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-
-          {/* Uploaded files indicator */}
-          {(uploadedImage || uploadedPdfText) && (
-            <div className="mb-4 p-3 bg-purple-50 border border-purple-100 rounded-xl">
-              <div className="flex items-center gap-2 mb-2">
-                <FiCheck className="text-purple-500" size={13} />
-                <span className="text-purple-700 font-semibold text-xs">Files Ready for Analysis</span>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {uploadedImage && (
-                  <div className="flex items-center gap-2 bg-white border border-purple-200 rounded-lg px-3 py-1.5">
-                    <FiImage className="text-purple-500" size={13} />
-                    <span className="text-gray-700 text-xs font-medium truncate max-w-[120px]">{uploadedImageName}</span>
-                    <button onClick={clearImage} className="text-gray-400 hover:text-red-500 transition-colors"><FiX size={12} /></button>
-                  </div>
-                )}
-                {uploadedPdfText && (
-                  <div className="flex items-center gap-2 bg-white border border-purple-200 rounded-lg px-3 py-1.5">
-                    <FiFileText className="text-purple-500" size={13} />
-                    <span className="text-gray-700 text-xs font-medium truncate max-w-[120px]">{uploadedPdfName}</span>
-                    <button onClick={() => setShowPdfModal(true)} className="text-gray-400 hover:text-purple-500 transition-colors"><FiEye size={12} /></button>
-                    <button onClick={clearPdf} className="text-gray-400 hover:text-red-500 transition-colors"><FiX size={12} /></button>
-                  </div>
-                )}
+        {/* Main Split Layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+          
+          {/* LEFT COLUMN: Controls & Query */}
+          <div className="col-span-1 lg:col-span-4 space-y-4">
+            {/* Controls */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+              <div className="flex items-end gap-3">
+                <div className="flex-1">
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">ANALYSIS TYPE</label>
+                  <select
+                    value={selectedOption}
+                    onChange={e => {
+                      const val = e.target.value;
+                      setSelectedOption(val);
+                      switch(val) {
+                        case 'Generic': setQuery('Provide a generic consultation for '); break;
+                        case 'Explain': setQuery('Explain the current condition of '); break;
+                        case 'Diagnosis': setQuery('Provide a diagnosis and differential for '); break;
+                        case 'Treatment': setQuery('Suggest a treatment plan for '); break;
+                        case 'Side Effects': setQuery('Analyze the side effects of '); break;
+                        default: break;
+                      }
+                      setTimeout(() => {
+                        if (queryInputRef.current) {
+                          queryInputRef.current.focus();
+                          const len = queryInputRef.current.value.length;
+                          queryInputRef.current.setSelectionRange(len, len);
+                        }
+                      }, 0);
+                    }}
+                    className="w-full px-3 py-2.5 bg-[#1a1f36] text-white rounded-xl font-semibold border border-[#2d3348] text-xs cursor-pointer shadow-sm focus:outline-none focus:ring-2 focus:ring-purple-400 appearance-none"
+                  >
+                    <option value="Generic">📝 Generic Conversation</option>
+                    <option value="Explain">📋 Explain Condition</option>
+                    <option value="Diagnosis">🔬 Diagnosis & Differential</option>
+                    <option value="Treatment">💊 Treatment Plan</option>
+                    <option value="Side Effects">⚠️ Side Effects Analysis</option>
+                  </select>
+                </div>
+                <button
+                  onClick={() => setEnableVoiceResponse(!enableVoiceResponse)}
+                  className={`px-4 py-2.5 rounded-xl font-semibold text-xs transition-all flex items-center justify-center gap-1.5 border h-[42px] ${enableVoiceResponse ? 'bg-purple-500 text-white border-purple-500' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
+                >
+                  {enableVoiceResponse ? <><FiMic size={14} /> Voice: ON</> : <><FiMicOff size={14} /> Voice Response</>}
+                </button>
               </div>
             </div>
-          )}
 
-          <div className="grid grid-cols-4 gap-4">
-            {/* Query textarea */}
-            <div className="col-span-3">
-              <label className={labelClass + ' flex items-center gap-1'}><FiFileText size={10} /> Clinical Session</label>
+            {/* Query Section */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+              <div className="flex items-center justify-between mb-3">
+                <label className="flex items-center gap-1.5 text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+                  <FiFileText size={12} /> CLINICAL SESSION
+                </label>
+                <button
+                  onClick={handleAsk}
+                  disabled={isLoading}
+                  className="px-5 py-2 rounded-xl font-bold text-white text-xs transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-md hover:shadow-lg"
+                  style={{ background: 'linear-gradient(135deg, #a855f7 0%, #ec4899 100%)' }}
+                >
+                  {isLoading ? (
+                    <><div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" /> Processing...</>
+                  ) : (
+                    <><FiActivity size={14} /> AI assistance</>
+                  )}
+                </button>
+              </div>
+
+              {/* Uploaded files indicator */}
+              {(uploadedImage || uploadedPdfText) && (
+                <div className="mb-3 p-2 bg-purple-50 border border-purple-100 rounded-lg">
+                  <div className="flex flex-wrap gap-2">
+                    {uploadedImage && (
+                      <div className="flex items-center gap-1.5 bg-white border border-purple-200 rounded-md px-2 py-1">
+                        <FiImage className="text-purple-500" size={12} />
+                        <span className="text-gray-700 text-[10px] font-medium truncate max-w-[80px]">{uploadedImageName}</span>
+                        <button onClick={clearImage} className="text-gray-400 hover:text-red-500"><FiX size={10} /></button>
+                      </div>
+                    )}
+                    {uploadedPdfText && (
+                      <div className="flex items-center gap-1.5 bg-white border border-purple-200 rounded-md px-2 py-1">
+                        <FiFileText className="text-purple-500" size={12} />
+                        <span className="text-gray-700 text-[10px] font-medium truncate max-w-[80px]">{uploadedPdfName}</span>
+                        <button onClick={clearPdf} className="text-gray-400 hover:text-red-500"><FiX size={10} /></button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               <textarea
                 ref={queryInputRef}
                 value={query}
                 onChange={e => setQuery(e.target.value)}
                 placeholder="E.g., What do the lab results indicate? Or leave blank for comprehensive analysis based on selected type."
-                className={inputClass + ' h-24 resize-none'}
+                className="w-full px-3 py-3 bg-gray-50 border-none rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-400 transition-all text-gray-800 text-sm placeholder-gray-400 h-40 resize-none shadow-inner"
               />
-              <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
+              <p className="text-[10px] text-gray-400 mt-2 flex items-center gap-1">
                 <FiAlertCircle size={10} /> AI will analyze with selected type, uploaded files, and patient data.
               </p>
             </div>
+          </div>
 
-            {/* Controls */}
-            <div className="space-y-2">
-              <label className={labelClass}>Analysis Type</label>
-              <select
-                value={selectedOption}
-                onChange={e => {
-                  const val = e.target.value;
-                  setSelectedOption(val);
-                  switch(val) {
-                    case 'Generic':
-                      setQuery('Provide a generic consultation for ');
-                      break;
-                    case 'Explain':
-                      setQuery('Explain the current condition of ');
-                      break;
-                    case 'Diagnosis':
-                      setQuery('Provide a diagnosis and differential for ');
-                      break;
-                    case 'Treatment':
-                      setQuery('Suggest a treatment plan for ');
-                      break;
-                    case 'Side Effects':
-                      setQuery('Analyze the side effects of ');
-                      break;
-                    default:
-                      break;
-                  }
-                  setTimeout(() => {
-                    if (queryInputRef.current) {
-                      queryInputRef.current.focus();
-                      const len = queryInputRef.current.value.length;
-                      queryInputRef.current.setSelectionRange(len, len);
-                    }
-                  }, 0);
-                }}
-                 className="w-full px-3 py-2.5 bg-gray-800 text-white rounded-xl font-semibold border border-gray-700 text-[10px] sm:text-xs cursor-pointer transition-all shadow-sm"
-              >
-                <option value="Generic">📝 Generic Conversation</option>
-                <option value="Explain">📋 Explain Condition</option>
-                <option value="Diagnosis">🔬 Diagnosis & Differential</option>
-                <option value="Treatment">💊 Treatment Plan</option>
-                <option value="Side Effects">⚠️ Side Effects Analysis</option>
-              </select>
-
-              <button
-                onClick={handleAsk}
-                disabled={isLoading}
-                 className="w-full py-2.5 rounded-xl font-bold text-white text-[11px] sm:text-sm transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-md"
-                style={{ background: 'linear-gradient(135deg, #a855f7 0%, #ec4899 100%)' }}
-              >
-                {isLoading ? (
-                  <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Processing...</>
-                ) : (
-                  <><FiActivity size={14} /> AI assistance</>
+          {/* RIGHT COLUMN: Chat Area */}
+          <div className="col-span-1 lg:col-span-8 flex flex-col bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden h-[500px] lg:h-[550px]">
+            <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between bg-white">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-emerald-50 flex items-center justify-center">
+                  <FiActivity className="text-emerald-500" size={14} />
+                </div>
+                <p className="font-bold text-gray-800 text-sm">Conversation</p>
+                {isLoading && (
+                  <div className="flex items-center gap-1.5 bg-purple-50 px-2.5 py-1 rounded-md ml-2">
+                    <div className="w-3 h-3 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
+                    <span className="text-purple-600 text-[10px] font-bold">Analyzing...</span>
+                  </div>
                 )}
-              </button>
-
-              <button
-                onClick={() => setEnableVoiceResponse(!enableVoiceResponse)}
-                 className={`w-full py-2.5 rounded-xl font-semibold text-[10px] sm:text-xs transition-all flex items-center justify-center gap-1.5 border ${enableVoiceResponse ? 'bg-purple-500 text-white border-purple-500' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
-              >
-                {enableVoiceResponse ? <><FiMic size={12} /> Voice: ON</> : <><FiMicOff size={12} /> Voice Response</>}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* AI Response Area */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-xl bg-emerald-50 flex items-center justify-center">
-                <FiActivity className="text-emerald-500" size={15} />
               </div>
-              <p className="font-semibold text-gray-800 text-sm">Conversation</p>
-              {isLoading && (
-                <div className="flex items-center gap-1.5 bg-purple-50 px-3 py-1 rounded-lg">
-                  <div className="w-3 h-3 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
-                  <span className="text-purple-600 text-xs font-semibold">Analyzing...</span>
-                </div>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              {isSpeaking && (
-                <button onClick={stopVoice} className="flex items-center gap-1 bg-red-50 hover:bg-red-100 text-red-600 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors">
-                  <FiMicOff size={12} /> Stop Voice
-                </button>
-              )}
-              <span className="text-xs text-gray-400 bg-gray-50 px-3 py-1 rounded-lg">
-                {chatHistory.length} conversation{chatHistory.length !== 1 ? 's' : ''}
-              </span>
-              {chatHistory.length > 0 && (
-                <button onClick={() => setChatHistory([])} className="flex items-center gap-1 bg-red-50 hover:bg-red-100 text-red-500 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors">
-                  <FiX size={12} /> Clear
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Chat area */}
-          <div ref={chatContainerRef} className="p-5 min-h-[300px] max-h-[340px] overflow-y-auto relative bg-gray-50/30">
-            {/* Watermark */}
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none overflow-hidden" style={{ zIndex: 0 }}>
-              <img src="/myimage.png" alt="" className="min-w-[140%] min-h-[140%] object-cover opacity-[0.04]" />
+              <div className="flex items-center gap-2">
+                {isSpeaking && (
+                  <button onClick={stopVoice} className="flex items-center gap-1 bg-red-50 hover:bg-red-100 text-red-600 px-3 py-1.5 rounded-lg text-[10px] font-semibold transition-colors">
+                    <FiMicOff size={12} /> Stop
+                  </button>
+                )}
+                <span className="text-[10px] font-semibold text-gray-400">
+                  {chatHistory.length} conversation{chatHistory.length !== 1 ? 's' : ''}
+                </span>
+                {chatHistory.length > 0 && (
+                  <button onClick={() => setChatHistory([])} className="text-gray-400 hover:text-red-500 transition-colors p-1" title="Clear Chat">
+                    <FiX size={14} />
+                  </button>
+                )}
+              </div>
             </div>
 
-            <div className="relative z-10">
-              {isLoading ? (
-                <div className="flex flex-col items-center justify-center h-48 space-y-3">
-                  <div className="w-12 h-12 border-3 border-gray-200 border-t-purple-500 rounded-full animate-spin" />
-                  <p className="text-gray-500 text-sm font-medium">AI is analyzing your query...</p>
-                </div>
-              ) : chatHistory.length > 0 ? (
-                <div className="space-y-4">
-                  {chatHistory.map((chat, idx) => (
-                    <div key={chat.id} className="space-y-3">
-                      {/* User message */}
-                      <div className="flex items-start gap-3">
-                        <div className="w-7 h-7 rounded-full bg-purple-500 flex items-center justify-center flex-shrink-0 mt-0.5">
-                          <FiUser className="text-white" size={12} />
-                        </div>
-                        <div className="flex-1 bg-purple-50 border border-purple-100 rounded-2xl rounded-tl-sm px-4 py-3">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="text-xs font-bold text-purple-600">You</span>
-                            <span className="text-xs text-gray-400">• {chat.timestamp}</span>
-                            <span className="text-xs bg-purple-100 text-purple-600 px-2 py-0.5 rounded-full">{chat.queryType}</span>
-                            {chat.hasImage && <span className="text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full">📷 Image</span>}
-                            {chat.hasPdf && <span className="text-xs bg-teal-100 text-teal-600 px-2 py-0.5 rounded-full">📄 PDF</span>}
+            <div ref={chatContainerRef} className="flex-1 p-5 overflow-y-auto relative bg-gray-50/20">
+              {/* Watermark */}
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none overflow-hidden" style={{ zIndex: 0 }}>
+                <img src="/myimage.png" alt="" className="min-w-[100%] min-h-[100%] object-cover opacity-[0.03]" />
+              </div>
+
+              <div className="relative z-10">
+                {isLoading && chatHistory.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-full min-h-[300px] space-y-3">
+                    <div className="w-10 h-10 border-3 border-gray-200 border-t-purple-500 rounded-full animate-spin" />
+                    <p className="text-gray-400 text-sm font-medium">AI is analyzing...</p>
+                  </div>
+                ) : chatHistory.length > 0 ? (
+                  <div className="space-y-5">
+                    {chatHistory.map((chat, idx) => (
+                      <div key={chat.id} className="space-y-3">
+                        {/* User message */}
+                        <div className="flex items-start gap-3">
+                          <div className="w-6 h-6 rounded-full bg-purple-500 flex items-center justify-center flex-shrink-0 mt-0.5 shadow-sm">
+                            <FiUser className="text-white" size={10} />
                           </div>
-                          <p className="text-gray-700 text-sm">{chat.query}</p>
+                          <div className="flex-1 bg-white border border-gray-100 rounded-2xl rounded-tl-sm px-4 py-3 shadow-sm">
+                            <div className="flex items-center gap-2 mb-1.5">
+                              <span className="text-[10px] font-bold text-gray-500">You</span>
+                              <span className="text-[10px] text-gray-400">{chat.timestamp}</span>
+                              <span className="text-[10px] font-bold bg-purple-50 text-purple-600 px-2 py-0.5 rounded-full">{chat.queryType}</span>
+                              {chat.hasImage && <span className="text-[10px] font-bold bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full">📷 Image</span>}
+                              {chat.hasPdf && <span className="text-[10px] font-bold bg-teal-50 text-teal-600 px-2 py-0.5 rounded-full">📄 PDF</span>}
+                            </div>
+                            <p className="text-gray-700 text-sm">{chat.query}</p>
+                          </div>
                         </div>
-                      </div>
 
-                      {/* AI message */}
-                      <div className="flex items-start gap-3">
-                        <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${chat.isError ? 'bg-red-500' : 'bg-emerald-500'}`}>
-                          {chat.isError ? <FiAlertCircle className="text-white" size={12} /> : <FiActivity className="text-white" size={12} />}
-                        </div>
-                        <div className={`flex-1 rounded-2xl rounded-tl-sm px-4 py-3 border ${chat.isError ? 'bg-red-50 border-red-100' : 'bg-white border-gray-100'} shadow-sm`}>
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center gap-2">
-                              <span className={`text-xs font-bold ${chat.isError ? 'text-red-600' : 'text-emerald-600'}`}>
-                                {chat.isError ? 'Error' : 'AI Assistant'}
-                              </span>
-                              <span className="text-xs text-gray-400">• {chat.timestamp}</span>
-                              {chat.isStreaming && (
-                                <span className="text-xs bg-purple-50 text-purple-600 px-2 py-0.5 rounded-full flex items-center gap-1">
-                                  <span className="w-1.5 h-1.5 bg-purple-500 rounded-full animate-pulse" />
-                                  Streaming...
+                        {/* AI message */}
+                        <div className="flex items-start gap-3">
+                          <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 shadow-sm ${chat.isError ? 'bg-red-500' : 'bg-gradient-to-br from-teal-400 to-emerald-500'}`}>
+                            {chat.isError ? <FiAlertCircle className="text-white" size={10} /> : <FiActivity className="text-white" size={10} />}
+                          </div>
+                          <div className={`flex-1 rounded-2xl rounded-tl-sm px-4 py-3 border shadow-sm ${chat.isError ? 'bg-red-50 border-red-100' : 'bg-white border-emerald-50/50'}`}>
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="flex items-center gap-2">
+                                <span className={`text-[10px] font-bold ${chat.isError ? 'text-red-600' : 'text-emerald-600'}`}>
+                                  {chat.isError ? 'Error' : 'AI Assistant'}
                                 </span>
+                                <span className="text-[10px] text-gray-400">{chat.timestamp}</span>
+                                {chat.isStreaming && (
+                                  <span className="text-[10px] font-bold bg-purple-50 text-purple-600 px-2 py-0.5 rounded-full flex items-center gap-1">
+                                    <span className="w-1.5 h-1.5 bg-purple-500 rounded-full animate-pulse" />
+                                    Streaming...
+                                  </span>
+                                )}
+                              </div>
+                              {!chat.isError && chat.response && !chat.isLoading && (
+                                <button
+                                  onClick={() => toggleSpeech(chat.response, chat.id)}
+                                  className={`p-1.5 rounded-md transition-all ${isSpeaking && speakingChatId === chat.id ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-50 hover:bg-gray-100 text-gray-400 hover:text-gray-600'}`}
+                                  title={isSpeaking && speakingChatId === chat.id ? 'Stop' : 'Read aloud'}
+                                >
+                                  {isSpeaking && speakingChatId === chat.id ? <FiMicOff size={12} /> : <FiMic size={12} />}
+                                </button>
                               )}
                             </div>
-                            {!chat.isError && chat.response && !chat.isLoading && (
-                              <button
-                                onClick={() => toggleSpeech(chat.response, chat.id)}
-                                className={`p-1.5 rounded-lg transition-all ${isSpeaking && speakingChatId === chat.id ? 'bg-emerald-500 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-500'}`}
-                                title={isSpeaking && speakingChatId === chat.id ? 'Stop' : 'Read aloud'}
-                              >
-                                {isSpeaking && speakingChatId === chat.id ? <FiMicOff size={12} /> : <FiMic size={12} />}
-                              </button>
+                            {chat.isLoading ? (
+                              <div className="flex items-center gap-2 py-3">
+                                <div className="w-4 h-4 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+                                <span className="text-gray-400 text-xs font-medium">AI is thinking...</span>
+                              </div>
+                            ) : (
+                              <ChatResponseContent response={chat.response} isError={chat.isError} />
                             )}
                           </div>
-                          {chat.isLoading ? (
-                            <div className="flex items-center gap-2 py-2">
-                              <div className="w-4 h-4 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
-                              <span className="text-gray-500 text-sm">AI is thinking...</span>
-                            </div>
-                          ) : (
-                            <ChatResponseContent response={chat.response} isError={chat.isError} />
-                          )}
                         </div>
-                      </div>
 
-                      {idx < chatHistory.length - 1 && <div className="border-t border-dashed border-gray-200 my-2" />}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center h-48 text-center">
-                  <div className="w-14 h-14 rounded-full bg-gray-100 flex items-center justify-center mb-3">
-                    <FiActivity className="text-gray-300" size={28} />
+                      </div>
+                    ))}
                   </div>
-                  <p className="font-semibold text-gray-600 mb-1">Ready for Analysis</p>
-                  <p className="text-gray-400 text-sm">Upload reports or images, then click ASK AI</p>
-                </div>
-              )}
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-full min-h-[300px] text-center opacity-60">
+                    <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mb-3">
+                      <FiActivity className="text-gray-400" size={24} />
+                    </div>
+                    <p className="font-bold text-gray-600 mb-1">Ready for Analysis</p>
+                    <p className="text-gray-400 text-xs">Upload reports or images, then click ASK AI</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Hint Box inside Chat Column */}
+            <div className="px-5 py-3 border-t border-amber-100/50 bg-amber-50/30">
+              <p className="text-[10px] font-medium text-amber-600 flex items-center gap-1.5">
+                💡 Each query is saved in conversation history. Scroll up to view previous analyses.
+              </p>
             </div>
           </div>
 
-          <div className="px-5 py-2 border-t border-gray-50 bg-amber-50/50">
-            <p className="text-xs text-amber-600">💡 Each query is saved in conversation history. Scroll up to view previous analyses.</p>
-          </div>
         </div>
 
         {/* Action Buttons */}
