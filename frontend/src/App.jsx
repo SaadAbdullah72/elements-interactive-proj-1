@@ -18,18 +18,16 @@ function App() {
       return 'login';
     }
     const path = window.location.pathname.replace(/\/+$/, '').toLowerCase();
-    switch (path) {
-      case '/signup':
-        return 'signup';
-      case '/verification':
-        return 'verification';
-      case '/consultation':
-        return 'consultation';
-      case '/login':
-      case '/':
-      default:
-        return 'login';
+    if (path === '/signup' || path === '/doctor/signup' || path === '/doctor-signup' || path.includes('/signup')) {
+      return 'signup';
     }
+    if (path === '/verification' || path.includes('/verification')) {
+      return 'verification';
+    }
+    if (path === '/consultation' || path.includes('/consultation')) {
+      return 'consultation';
+    }
+    return 'login';
   };
 
   const [currentScreen, setCurrentScreen] = useState(getInitialScreen);
