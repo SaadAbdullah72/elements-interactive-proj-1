@@ -31,6 +31,23 @@ import axios from 'axios';
 import { API_URL } from './apiConfig';
 import AppHeader from './AppHeader';
 
+const CONDITION_OPTIONS = [
+  "Stable",
+  "Mild symptoms",
+  "Moderate symptoms",
+  "Severe symptoms",
+  "Critical",
+  "Guarded",
+  "Under observation",
+  "Chronic flare-up",
+  "Hypertension",
+  "Hyperglycemia",
+  "Hypoglycemia",
+  "Neuropathy",
+  "Retinopathy",
+  "Nephropathy"
+];
+
 const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
@@ -42,12 +59,8 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
   const [heightFeet, setHeightFeet] = useState('');
   const [heightInches, setHeightInches] = useState('');
   const [showHeightInfo, setShowHeightInfo] = useState(false);
-
-  // -------------------------
-  // Verification form state
-  // lookupMode toggles whether we search by patid or phone_number
-  // -------------------------
-  const [lookupMode, setLookupMode] = useState('patid'); // 'patid' | 'phone'
+  const [showConditionDropdown, setShowConditionDropdown] = useState(false);
+  const conditionDropdownRef = React.useRef(null);
 
   const [formData, setFormData] = useState({
     caseid: '',
@@ -90,6 +103,23 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
   const handleAddPatientChange = (e) => {
     const { name, value } = e.target;
     setAddPatientData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const selectedConditions = addPatientData.condition
+    ? addPatientData.condition.split(',').map(c => c.trim()).filter(Boolean)
+    : [];
+
+  const handleToggleCondition = (cond) => {
+    let newConditions;
+    if (selectedConditions.includes(cond)) {
+      newConditions = selectedConditions.filter(c => c !== cond);
+    } else {
+      newConditions = [...selectedConditions, cond];
+    }
+    setAddPatientData(prev => ({
+      ...prev,
+      condition: newConditions.join(', ')
+    }));
   };
 
   // Auto-calculate BMI from weight + height
@@ -149,6 +179,17 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
       setShowHeightInfo(false);
     }
   }, [showAddPatientModal]);
+
+  // Close condition dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (conditionDropdownRef.current && !conditionDropdownRef.current.contains(event.target)) {
+        setShowConditionDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const loadPatients = async () => {
     try {
@@ -304,32 +345,18 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
     setError('');
     setSuccess('');
 
-    if (lookupMode === 'phone') {
-      if (!formData.phone_number.trim()) {
-        setError('❌ Phone number is required.');
-        return;
-      }
-      if (!isValidPkPhone(formData.phone_number)) {
-        setError('❌ Enter valid 11 digit mobile no');
-        return;
-      }
-    }
-
     setIsLoading(true);
     try {
       const token = sessionStorage.getItem('authToken');
 
-      // Build payload based on active lookup mode
-      const payload =
-        lookupMode === 'phone'
-          ? { phone_number: formData.phone_number }
-          : {
-              caseid: formData.caseid,
-              patid: formData.patid,
-              pname: formData.pname,
-              dob: formData.dob,
-              age: parseInt(formData.age)
-            };
+      // Build payload
+      const payload = {
+        caseid: formData.caseid,
+        patid: formData.patid,
+        pname: formData.pname,
+        dob: formData.dob,
+        age: parseInt(formData.age)
+      };
 
       const response = await axios.post(
         `${API_URL}/api/doctor/verify-patient`,
@@ -344,11 +371,7 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
       }
     } catch (err) {
       if (err.response?.status === 404) {
-        setError(
-          lookupMode === 'phone'
-            ? '❌ No patient found with that phone number.'
-            : '❌ Patient not found. Please check the details and try again.'
-        );
+        setError('❌ Patient not found. Please check the details and try again.');
       } else if (err.response?.status === 400) {
         const detail = err.response.data.detail;
         if (detail?.mismatched_fields) {
@@ -440,13 +463,6 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setShowAddPatientModal(true)}
-                  className="flex items-center gap-1.5 px-4 py-2 text-white rounded-xl text-xs font-semibold transition-all shadow-md hover:shadow-lg hover:-translate-y-0.5"
-                  style={{ background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)' }}
-                >
-                  <FiPlus size={14} /> Add Patient
-                </button>
                 <button
                   onClick={loadPatients}
                   className="flex items-center gap-1.5 px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-xl text-xs font-semibold transition-colors shadow-sm"
@@ -632,9 +648,57 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
                             <option value="Other">Other</option>
                           </select>
                         </div>
-                        <div>
+                        <div className="relative" ref={conditionDropdownRef}>
                           <label className={labelClass}>Condition</label>
-                          <input type="text" name="condition" value={addPatientData.condition} onChange={handleAddPatientChange} placeholder="e.g. Stable, Mild symptoms" className={inputClass} />
+                          <button
+                            type="button"
+                            onClick={() => setShowConditionDropdown(!showConditionDropdown)}
+                            className={`${inputClass} flex items-center justify-between text-left min-h-[38px]`}
+                          >
+                            <span className={selectedConditions.length === 0 ? "text-gray-400" : "text-gray-800"}>
+                              {selectedConditions.length === 0 
+                                ? "Select conditions" 
+                                : selectedConditions.join(', ')}
+                            </span>
+                            <svg className={`w-4 h-4 text-gray-400 transition-transform ${showConditionDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                            </svg>
+                          </button>
+
+                          <AnimatePresence>
+                            {showConditionDropdown && (
+                              <motion.div
+                                initial={{ opacity: 0, y: 4 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: 4 }}
+                                transition={{ duration: 0.15 }}
+                                className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-60 overflow-y-auto p-1.5 space-y-0.5"
+                              >
+                                {CONDITION_OPTIONS.map((option) => {
+                                  const isSelected = selectedConditions.includes(option);
+                                  return (
+                                    <button
+                                      key={option}
+                                      type="button"
+                                      onClick={() => handleToggleCondition(option)}
+                                      className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm text-left transition-colors ${
+                                        isSelected 
+                                          ? 'bg-purple-50 text-purple-700 font-semibold' 
+                                          : 'text-gray-600 hover:bg-gray-50'
+                                      }`}
+                                    >
+                                      <span>{option}</span>
+                                      {isSelected && (
+                                        <svg className="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" />
+                                        </svg>
+                                      )}
+                                    </button>
+                                  );
+                                })}
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
                         </div>
                         <div>
                           <label className={labelClass}>Medication</label>
@@ -773,127 +837,64 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
             </AnimatePresence>
 
             {/* -------------------------
-                Lookup Mode Toggle
-                Lets doctor switch between Patient ID lookup and Phone lookup
+                Patient Verification Header
             ------------------------- */}
-            <div className="px-6 pt-5 pb-2">
-              <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1 w-fit">
-                <button
-                  type="button"
-                  onClick={() => { setLookupMode('patid'); setError(''); }}
-                  className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
-                    lookupMode === 'patid'
-                      ? 'bg-white text-purple-700 shadow-sm'
-                      : 'text-gray-500 hover:text-gray-700'
-                  }`}
-                >
-                  <FiUser size={12} /> Patient ID
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setLookupMode('phone'); setError(''); }}
-                  className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
-                    lookupMode === 'phone'
-                      ? 'bg-white text-blue-700 shadow-sm'
-                      : 'text-gray-500 hover:text-gray-700'
-                  }`}
-                >
-                  <FiPhone size={12} /> Phone Number
-                </button>
-              </div>
-              <p className="text-xs text-gray-400 mt-2">
-                {lookupMode === 'phone'
-                  ? 'Patient forgot their ID? Look them up by registered phone number.'
-                  : 'Standard verification using Case ID and Patient ID.'}
+            <div className="px-6 pt-5 pb-2 flex flex-col items-start">
+              <p className="text-xs text-gray-400">
+                Standard verification using Case ID and Patient ID.
               </p>
+              <button
+                type="button"
+                onClick={() => setShowAddPatientModal(true)}
+                className="flex items-center gap-1.5 px-4 py-2 text-white rounded-xl text-xs font-semibold transition-all shadow-md hover:shadow-lg hover:-translate-y-0.5 mt-3"
+                style={{ background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)' }}
+              >
+                <FiPlus size={14} /> Add Patient
+              </button>
             </div>
 
             {/* Verification Form */}
             <form onSubmit={handleVerify} className="px-6 pb-6 pt-3 space-y-4">
 
-              {lookupMode === 'patid' ? (
-                /* ---- Standard Patient ID verification ---- */
-                <>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className={labelClass}><FiUser className="inline mr-1" size={10} />Patient ID *</label>
-                      <input type="text" name="patid" value={formData.patid} onChange={handleChange} placeholder="PAT-000001" className={inputClass} required />
-                    </div>
-                    <div>
-                      <label className={labelClass}><FiFileText className="inline mr-1" size={10} />Case ID *</label>
-                      <input type="text" name="caseid" value={formData.caseid} onChange={handleChange} placeholder="CASE-2024-00001" className={inputClass} required />
-                    </div>
-                  </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className={labelClass}><FiUser className="inline mr-1" size={10} />Patient ID *</label>
+                  <input type="text" name="patid" value={formData.patid} onChange={handleChange} placeholder="PAT-000001" className={inputClass} required />
+                </div>
+                <div>
+                  <label className={labelClass}><FiFileText className="inline mr-1" size={10} />Case ID *</label>
+                  <input type="text" name="caseid" value={formData.caseid} onChange={handleChange} placeholder="CASE-2024-00001" className={inputClass} required />
+                </div>
+              </div>
 
-                  <div>
-                    <label className={labelClass}><FiUser className="inline mr-1" size={10} />Patient Name *</label>
-                    <input type="text" name="pname" value={formData.pname} onChange={handleChange} placeholder="Full name as registered" className={inputClass} required />
-                  </div>
+              <div>
+                <label className={labelClass}><FiUser className="inline mr-1" size={10} />Patient Name *</label>
+                <input type="text" name="pname" value={formData.pname} onChange={handleChange} placeholder="Full name as registered" className={inputClass} required />
+              </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className={labelClass}><FiCalendar className="inline mr-1" size={10} />Year of Birth *</label>
-                      <input type="number" name="dob" value={formData.dob} onChange={handleChange} placeholder="e.g. 1985" min="1920" max={new Date().getFullYear()} className={inputClass} required />
-                    </div>
-                    <div>
-                      <label className={labelClass}><FiCalendar className="inline mr-1" size={10} />Age *</label>
-                      <input type="number" name="age" value={formData.age} placeholder="Calculated automatically" className={`${inputClass} bg-gray-50 cursor-not-allowed`} readOnly required />
-                    </div>
-                  </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className={labelClass}><FiCalendar className="inline mr-1" size={10} />Year of Birth *</label>
+                  <input type="number" name="dob" value={formData.dob} onChange={handleChange} placeholder="e.g. 1985" min="1920" max={new Date().getFullYear()} className={inputClass} required />
+                </div>
+                <div>
+                  <label className={labelClass}><FiCalendar className="inline mr-1" size={10} />Age *</label>
+                  <input type="number" name="age" value={formData.age} placeholder="Calculated automatically" className={`${inputClass} bg-gray-50 cursor-not-allowed`} readOnly required />
+                </div>
+              </div>
 
-                  <button
-                    type="submit"
-                    disabled={isLoading}
-                    className="w-full mt-2 py-3.5 rounded-xl font-bold text-white text-sm transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-md hover:opacity-95"
-                    style={{ background: 'linear-gradient(135deg, #a855f7 0%, #ec4899 100%)' }}
-                  >
-                    {isLoading ? (
-                      <><div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> Moving to Consultation...</>
-                    ) : (
-                      <><FiSearch size={16} /> Move to Consultation Page</>
-                    )}
-                  </button>
-                </>
-              ) : (
-                /* ---- Phone number lookup ---- */
-                <>
-                  <div>
-                    <label className={labelClass}>
-                      <FiPhone className="inline mr-1" size={10} />Registered Phone Number *
-                    </label>
-                    <input
-                      type="tel"
-                      name="phone_number"
-                      value={formData.phone_number}
-                      onChange={handleChange}
-                      placeholder="03001234567 or +923001234567"
-                      className={inputClass}
-                      required
-                    />
-                    <p className="text-xs text-gray-400 mt-1">
-                      Enter the phone number the patient registered with. Format is flexible — we normalize automatically.
-                    </p>
-                    {formData.phone_number && !isValidPkPhone(formData.phone_number) && (
-                      <p className="text-xs text-red-500 mt-1">
-                        ⚠️ Enter valid 11 digit mobile no
-                      </p>
-                    )}
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={isLoading}
-                    className="w-full mt-2 py-3.5 rounded-xl font-bold text-white text-sm transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-md hover:opacity-95"
-                    style={{ background: 'linear-gradient(135deg, #3b82f6 0%, #6366f1 100%)' }}
-                  >
-                    {isLoading ? (
-                      <><div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> Moving to Consultation...</>
-                    ) : (
-                      <><FiPhone size={16} /> Move to Consultation Page</>
-                    )}
-                  </button>
-                </>
-              )}
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full mt-2 py-3.5 rounded-xl font-bold text-white text-sm transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-md hover:opacity-95"
+                style={{ background: 'linear-gradient(135deg, #a855f7 0%, #ec4899 100%)' }}
+              >
+                {isLoading ? (
+                  <><div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> Moving to Consultation...</>
+                ) : (
+                  <><FiSearch size={16} /> Move to Consultation Page</>
+                )}
+              </button>
             </form>
 
           </div>

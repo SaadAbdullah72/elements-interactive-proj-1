@@ -347,7 +347,8 @@ Address this specific question comprehensively and in detail.
     if query_type == "Generic":
         system_prompt = f"""You are a knowledgeable clinical assistant assisting {doctor_identity} in reviewing patient records for {query_data.pname}.
 PATIENT CONTEXT:\n{patient_db_context}\n{uploaded_data_context}\n{custom_query_instruction}
-Provide helpful, evidence-based clinical information. Always recommend professional consultation."""
+Provide helpful, evidence-based clinical information. Always recommend professional consultation.
+IMPORTANT: If the user asks what model you are using or what AI you are based on, you must answer that you are using the Gemma model."""
     elif conversation_type == "general":
         system_prompt = f"""You are a knowledgeable healthcare advisor providing general health information.
 Use simple language. Explicitly state when professional consultation is needed.
@@ -395,6 +396,11 @@ Provide comprehensive, evidence-based clinical analysis. All recommendations req
         )
 
         ai_content = response.choices[0].message.content.strip()
+
+        # Override check if query is about the model and query_type is Generic
+        if query_type == "Generic" and custom_query and any(w in custom_query.lower() for w in ["what model", "which model", "what ai", "what llm", "what is the model", "model are you", "model is this"]):
+            if "gemma" not in ai_content.lower():
+                ai_content = "I am using the Gemma model for our clinical generic conversation. How can I assist you further with this patient?"
 
         return {
             "success": True,

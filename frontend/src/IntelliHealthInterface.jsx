@@ -493,12 +493,11 @@ const IntelliHealthInterface = ({ patientData, onBack, onLogout }) => {
             <p className="font-semibold text-gray-800 text-sm">Patient Information</p>
           </div>
           <div className="p-5">
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
               {[
                 { label: 'Case ID', name: 'caseid', placeholder: 'Case ID' },
                 { label: 'Patient ID', name: 'patid', placeholder: 'Patient ID' },
                 { label: 'Patient Name', name: 'pname', placeholder: 'Name' },
-                { label: 'Date of Birth', name: 'dob', type: 'date' },
                 { label: 'Age', name: 'age', type: 'number', placeholder: 'Age' },
                 { label: 'Patient Email', name: 'patient_email', type: 'email', placeholder: 'Email' }
               ].map(field => (
@@ -530,6 +529,89 @@ const IntelliHealthInterface = ({ patientData, onBack, onLogout }) => {
           </div>
         </div>
 
+        {/* Query Input Section */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+
+          {/* Uploaded files indicator */}
+          {(uploadedImage || uploadedPdfText) && (
+            <div className="mb-4 p-3 bg-purple-50 border border-purple-100 rounded-xl">
+              <div className="flex items-center gap-2 mb-2">
+                <FiCheck className="text-purple-500" size={13} />
+                <span className="text-purple-700 font-semibold text-xs">Files Ready for Analysis</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {uploadedImage && (
+                  <div className="flex items-center gap-2 bg-white border border-purple-200 rounded-lg px-3 py-1.5">
+                    <FiImage className="text-purple-500" size={13} />
+                    <span className="text-gray-700 text-xs font-medium truncate max-w-[120px]">{uploadedImageName}</span>
+                    <button onClick={clearImage} className="text-gray-400 hover:text-red-500 transition-colors"><FiX size={12} /></button>
+                  </div>
+                )}
+                {uploadedPdfText && (
+                  <div className="flex items-center gap-2 bg-white border border-purple-200 rounded-lg px-3 py-1.5">
+                    <FiFileText className="text-purple-500" size={13} />
+                    <span className="text-gray-700 text-xs font-medium truncate max-w-[120px]">{uploadedPdfName}</span>
+                    <button onClick={() => setShowPdfModal(true)} className="text-gray-400 hover:text-purple-500 transition-colors"><FiEye size={12} /></button>
+                    <button onClick={clearPdf} className="text-gray-400 hover:text-red-500 transition-colors"><FiX size={12} /></button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-4 gap-4">
+            {/* Query textarea */}
+            <div className="col-span-3">
+              <label className={labelClass + ' flex items-center gap-1'}><FiFileText size={10} /> Specific Query (Optional)</label>
+              <textarea
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                placeholder="E.g., What do the lab results indicate? Or leave blank for comprehensive analysis based on selected type."
+                className={inputClass + ' h-24 resize-none'}
+              />
+              <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
+                <FiAlertCircle size={10} /> AI will analyze with selected type, uploaded files, and patient data.
+              </p>
+            </div>
+
+            {/* Controls */}
+            <div className="space-y-2">
+              <label className={labelClass}>Analysis Type</label>
+              <select
+                value={selectedOption}
+                onChange={e => setSelectedOption(e.target.value)}
+                 className="w-full px-3 py-2.5 bg-gray-800 text-white rounded-xl font-semibold border border-gray-700 text-[10px] sm:text-xs cursor-pointer transition-all shadow-sm"
+              >
+                <option value="Generic">📝 Generic Conversation</option>
+                <option value="Explain">📋 Explain Condition</option>
+                <option value="Diagnosis">🔬 Diagnosis & Differential</option>
+                <option value="Treatment">💊 Treatment Plan</option>
+                <option value="Side Effects">⚠️ Side Effects Analysis</option>
+              </select>
+
+              <button
+                onClick={handleAsk}
+                disabled={isLoading}
+                 className="w-full py-2.5 rounded-xl font-bold text-white text-[11px] sm:text-sm transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-md"
+                style={{ background: 'linear-gradient(135deg, #a855f7 0%, #ec4899 100%)' }}
+              >
+                {isLoading ? (
+                  <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Processing...</>
+                ) : (
+                  <><FiActivity size={14} /> AI assistance</>
+                )}
+              </button>
+
+              <button
+                onClick={() => setEnableVoiceResponse(!enableVoiceResponse)}
+                 className={`w-full py-2.5 rounded-xl font-semibold text-[10px] sm:text-xs transition-all flex items-center justify-center gap-1.5 border ${enableVoiceResponse ? 'bg-purple-500 text-white border-purple-500' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
+              >
+                {enableVoiceResponse ? <><FiMic size={12} /> Voice: ON</> : <><FiMicOff size={12} /> Voice Response</>}
+              </button>
+            </div>
+          </div>
+        </div>
+
         {/* AI Response Area */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
@@ -537,7 +619,7 @@ const IntelliHealthInterface = ({ patientData, onBack, onLogout }) => {
               <div className="w-8 h-8 rounded-xl bg-emerald-50 flex items-center justify-center">
                 <FiActivity className="text-emerald-500" size={15} />
               </div>
-              <p className="font-semibold text-gray-800 text-sm">AI Clinical Analysis</p>
+              <p className="font-semibold text-gray-800 text-sm">Conversation</p>
               {isLoading && (
                 <div className="flex items-center gap-1.5 bg-purple-50 px-3 py-1 rounded-lg">
                   <div className="w-3 h-3 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
@@ -657,107 +739,16 @@ const IntelliHealthInterface = ({ patientData, onBack, onLogout }) => {
           </div>
         </div>
 
-        {/* Query Input Section */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-
-          {/* Uploaded files indicator */}
-          {(uploadedImage || uploadedPdfText) && (
-            <div className="mb-4 p-3 bg-purple-50 border border-purple-100 rounded-xl">
-              <div className="flex items-center gap-2 mb-2">
-                <FiCheck className="text-purple-500" size={13} />
-                <span className="text-purple-700 font-semibold text-xs">Files Ready for Analysis</span>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {uploadedImage && (
-                  <div className="flex items-center gap-2 bg-white border border-purple-200 rounded-lg px-3 py-1.5">
-                    <FiImage className="text-purple-500" size={13} />
-                    <span className="text-gray-700 text-xs font-medium truncate max-w-[120px]">{uploadedImageName}</span>
-                    <button onClick={clearImage} className="text-gray-400 hover:text-red-500 transition-colors"><FiX size={12} /></button>
-                  </div>
-                )}
-                {uploadedPdfText && (
-                  <div className="flex items-center gap-2 bg-white border border-purple-200 rounded-lg px-3 py-1.5">
-                    <FiFileText className="text-purple-500" size={13} />
-                    <span className="text-gray-700 text-xs font-medium truncate max-w-[120px]">{uploadedPdfName}</span>
-                    <button onClick={() => setShowPdfModal(true)} className="text-gray-400 hover:text-purple-500 transition-colors"><FiEye size={12} /></button>
-                    <button onClick={clearPdf} className="text-gray-400 hover:text-red-500 transition-colors"><FiX size={12} /></button>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          <div className="grid grid-cols-4 gap-4">
-            {/* Query textarea */}
-            <div className="col-span-3">
-              <label className={labelClass + ' flex items-center gap-1'}><FiFileText size={10} /> Specific Query (Optional)</label>
-              <textarea
-                value={query}
-                onChange={e => setQuery(e.target.value)}
-                placeholder="E.g., What do the lab results indicate? Or leave blank for comprehensive analysis based on selected type."
-                className={inputClass + ' h-24 resize-none'}
-              />
-              <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
-                <FiAlertCircle size={10} /> AI will analyze with selected type, uploaded files, and patient data.
-              </p>
-            </div>
-
-            {/* Controls */}
-            <div className="space-y-2">
-              <label className={labelClass}>Analysis Type</label>
-              <select
-                value={selectedOption}
-                onChange={e => setSelectedOption(e.target.value)}
-                 className="w-full px-3 py-2.5 bg-gray-800 text-white rounded-xl font-semibold border border-gray-700 text-[10px] sm:text-xs cursor-pointer transition-all shadow-sm"
-              >
-                <option value="Generic">📝 Generic Conversation</option>
-                <option value="Explain">📋 Explain Condition</option>
-                <option value="Diagnosis">🔬 Diagnosis & Differential</option>
-                <option value="Treatment">💊 Treatment Plan</option>
-                <option value="Side Effects">⚠️ Side Effects Analysis</option>
-              </select>
-
-              <button
-                onClick={handleAsk}
-                disabled={isLoading}
-                 className="w-full py-2.5 rounded-xl font-bold text-white text-[11px] sm:text-sm transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-md"
-                style={{ background: 'linear-gradient(135deg, #a855f7 0%, #ec4899 100%)' }}
-              >
-                {isLoading ? (
-                  <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Processing...</>
-                ) : (
-                  <><FiActivity size={14} /> ASK AI</>
-                )}
-              </button>
-
-              <button
-                onClick={() => setEnableVoiceResponse(!enableVoiceResponse)}
-                 className={`w-full py-2.5 rounded-xl font-semibold text-[10px] sm:text-xs transition-all flex items-center justify-center gap-1.5 border ${enableVoiceResponse ? 'bg-purple-500 text-white border-purple-500' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
-              >
-                {enableVoiceResponse ? <><FiMic size={12} /> Voice: ON</> : <><FiMicOff size={12} /> Voice Response</>}
-              </button>
-            </div>
-          </div>
-        </div>
-
         {/* Action Buttons */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
           {[
-            { icon: <FiPlus size={14} />, label: 'New Patient', onClick: onBack, color: 'bg-white hover:bg-gray-50 text-gray-700 border-gray-200' },
-            { icon: <FiImage size={14} />, label: 'Image Diagnosis', isLabel: true, color: 'bg-white hover:bg-gray-50 text-gray-700 border-gray-200' },
+            { icon: <FiPlus size={14} />, label: 'Next Patient', onClick: onBack, color: 'bg-white hover:bg-gray-50 text-gray-700 border-gray-200' },
             { icon: <FiClock size={14} />, label: 'History', onClick: fetchPatientHistory, color: 'bg-white hover:bg-gray-50 text-gray-700 border-gray-200' },
             { icon: <FiDownload size={14} />, label: 'Export Report', onClick: generatePDFReport, color: 'bg-white hover:bg-gray-50 text-gray-700 border-gray-200' }
           ].map((btn, i) => (
-            btn.isLabel ? (
-              <label key={i} className={`flex items-center justify-center gap-1 sm:gap-2 py-2 sm:py-3 rounded-xl font-semibold text-xs sm:text-sm transition-colors border shadow-sm cursor-pointer ${btn.color}`}>
-                {btn.icon} {btn.label}
-                <input type="file" onChange={handleImageUpload} accept="image/*" className="hidden" />
-              </label>
-            ) : (
-              <button key={i} onClick={btn.onClick} className={`flex items-center justify-center gap-1 sm:gap-2 py-2 sm:py-3 rounded-xl font-semibold text-xs sm:text-sm transition-colors border shadow-sm ${btn.color}`}>
-                {btn.icon} {btn.label}
-              </button>
-            )
+            <button key={i} onClick={btn.onClick} className={`flex items-center justify-center gap-1 sm:gap-2 py-2 sm:py-3 rounded-xl font-semibold text-xs sm:text-sm transition-colors border shadow-sm ${btn.color}`}>
+              {btn.icon} {btn.label}
+            </button>
           ))}
         </div>
 
