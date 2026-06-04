@@ -302,7 +302,7 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
           caseid: response.data.patient.caseid,
           patid: response.data.patient.patid,
           pname: response.data.patient.pname,
-          dob: response.data.patient.dob,
+          dob: response.data.patient.dob || addPatientData.dob,
           age: response.data.patient.age.toString(),
           patient_email: response.data.patient.patient_email || '',
           phone_number: response.data.patient.phone_number || '',
