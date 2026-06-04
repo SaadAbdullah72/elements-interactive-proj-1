@@ -20,6 +20,7 @@ import jwt
 import hashlib
 import re
 import os
+import random
 
 load_dotenv()
 
@@ -73,6 +74,21 @@ MEDICAL_SPECIALTIES = [
     "Pediatric Dentist"
 ]
 
+PROVINCE_CODE_MAP = {
+    "punjab": "3",
+    "sindh": "4",
+    "khyber pakhtunkhwa": "5",
+    "kpk": "5",
+    "balochistan": "6",
+    "islamabad": "7",
+    "islamabad capital territory": "7",
+    "gilgit-baltistan": "8",
+    "gilgit baltistan": "8",
+    "gilgit": "8",
+    "azad jammu & kashmir": "9",
+    "ajk": "9"
+}
+
 # -------------------------
 # JWT Configuration
 # -------------------------
@@ -90,6 +106,7 @@ DEFAULT_DOCTOR = {
     "age": 40,
     "date_of_birth": "1984-01-01",
     "gender": "Male",
+    "province": "Sindh",
     "specialization": "General Physician",
     "medical_council_registration": "PMC-123456",
     "medical_council_country": "Pakistan",
@@ -162,6 +179,20 @@ def verify_cnic(cnic: str) -> Dict[str, Any]:
     result["message"] = "CNIC format validated"
     return result
 
+
+def get_province_code(province: str) -> str:
+    normalized = province.strip().lower()
+    return PROVINCE_CODE_MAP.get(normalized, "0")
+
+
+def generate_doctor_id(gender: str, province: str, license_number: str) -> str:
+    gender_digit = "1" if gender.strip().lower() == "male" else "0"
+    province_digit = get_province_code(province)
+    license_digits = re.sub(r'\D', '', license_number)
+    license_suffix = license_digits[-3:].zfill(3)
+    random_segment = str(random.randint(0, 99)).zfill(2)
+    return f"DR{gender_digit}-{province_digit}{random_segment}-{license_suffix}"
+
 # -------------------------
 # Auto-Seed Default Doctor
 # -------------------------
@@ -191,6 +222,12 @@ def seed_default_doctor():
         )
         cnic_verification = verify_cnic(DEFAULT_DOCTOR["cnic"])
 
+        default_doctor_id = generate_doctor_id(
+            DEFAULT_DOCTOR["gender"],
+            DEFAULT_DOCTOR["province"],
+            DEFAULT_DOCTOR["medical_council_registration"]
+        )
+
         doctor_record = {
             "email": DEFAULT_DOCTOR["email"],
             "name": DEFAULT_DOCTOR["name"],
@@ -198,6 +235,7 @@ def seed_default_doctor():
             "age": DEFAULT_DOCTOR["age"],
             "date_of_birth": DEFAULT_DOCTOR["date_of_birth"],
             "gender": DEFAULT_DOCTOR["gender"],
+            "province": DEFAULT_DOCTOR["province"],
             "specialization": DEFAULT_DOCTOR["specialization"],
             "medical_council_registration": DEFAULT_DOCTOR["medical_council_registration"],
             "medical_council_country": DEFAULT_DOCTOR["medical_council_country"],
@@ -210,6 +248,7 @@ def seed_default_doctor():
             "years_of_experience": DEFAULT_DOCTOR["years_of_experience"],
             "additional_qualifications": DEFAULT_DOCTOR["additional_qualifications"],
             "license_image": None,
+            "doctor_id": default_doctor_id,
             "license_verification": license_verification,
             "cnic_verification": cnic_verification,
             "account_status": "active",
@@ -254,6 +293,7 @@ class DoctorSignup(BaseModel):
     age: int = Field(..., ge=21, le=100)
     date_of_birth: str
     gender: str
+    province: str
     specialization: str
     medical_council_registration: str
     medical_council_country: str = "Pakistan"
@@ -278,6 +318,20 @@ class DoctorSignup(BaseModel):
         if not re.search(r"\d", v):
             raise ValueError("Password must contain at least one number")
         return v
+
+    @validator('gender')
+    def validate_gender(cls, v):
+        if v.lower() not in ["male", "female"]:
+            raise ValueError("Gender must be either Male or Female")
+        return v.title()
+
+    @validator('province')
+    def validate_province(cls, v):
+        if v.strip().lower() not in PROVINCE_CODE_MAP:
+            raise ValueError(
+                "Province must be one of Punjab, Sindh, Khyber Pakhtunkhwa, Balochistan, Islamabad, Gilgit-Baltistan, or Azad Jammu & Kashmir"
+            )
+        return v.title()
 
     @validator('specialization')
     def validate_specialization(cls, v):
@@ -328,6 +382,7 @@ async def doctor_signup(signup_data: DoctorSignup):
         raise HTTPException(status_code=400, detail=f"CNIC verification failed: {cnic_verification['message']}")
 
     license_verification = verify_pmc_license(signup_data.medical_council_registration, signup_data.name)
+    doctor_id = generate_doctor_id(signup_data.gender, signup_data.province, signup_data.medical_council_registration)
 
     doctor_record = {
         "email": signup_data.email,
@@ -336,6 +391,7 @@ async def doctor_signup(signup_data: DoctorSignup):
         "age": signup_data.age,
         "date_of_birth": signup_data.date_of_birth,
         "gender": signup_data.gender,
+        "province": signup_data.province,
         "specialization": signup_data.specialization,
         "medical_council_registration": signup_data.medical_council_registration,
         "medical_council_country": signup_data.medical_council_country,
@@ -348,6 +404,7 @@ async def doctor_signup(signup_data: DoctorSignup):
         "years_of_experience": signup_data.years_of_experience,
         "additional_qualifications": signup_data.additional_qualifications,
         "license_image": signup_data.license_image,
+        "doctor_id": doctor_id,
         "license_verification": license_verification,
         "cnic_verification": cnic_verification,
         "account_status": "active" if license_verification["verified"] else "pending_verification",
@@ -374,7 +431,7 @@ async def doctor_signup(signup_data: DoctorSignup):
         "success": True,
         "message": "Registration successful! Your account is " +
                    ("active" if license_verification["verified"] else "pending license verification"),
-        "doctor_id": str(result.inserted_id),
+        "doctor_id": doctor_record["doctor_id"],
         "email": signup_data.email,
         "account_status": doctor_record["account_status"],
         "license_verified": license_verification["verified"],

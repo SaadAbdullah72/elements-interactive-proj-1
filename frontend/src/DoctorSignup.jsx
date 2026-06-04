@@ -61,6 +61,7 @@ const DoctorSignup = ({ onSignupSuccess, onBackToLogin }) => {
  phone: '',
  address: '',
  city: '',
+ province: '',
  hospital_affiliation: '',
  hospital_address: '',
  
@@ -70,19 +71,6 @@ const DoctorSignup = ({ onSignupSuccess, onBackToLogin }) => {
  // Additional
  additional_qualifications: ''
  });
-
- // Fetch medical specialties on mount
- useEffect(() => {
- const fetchSpecialties = async () => {
- try {
- const response = await axios.get(`${API_URL}/api/doctor/specialties`);
- setSpecialties(response.data);
- } catch (err) {
- console.error('Failed to fetch specialties:', err);
- }
- };
- fetchSpecialties();
- }, []);
 
  const handleChange = (e) => {
  const { name, value } = e.target;
@@ -280,6 +268,10 @@ const DoctorSignup = ({ onSignupSuccess, onBackToLogin }) => {
  }
  if (!formData.hospital_affiliation.trim()) {
  setError('Please enter your hospital affiliation');
+ return;
+ }
+ if (!formData.province.trim()) {
+ setError('Please select your province');
  return;
  }
  if (formData.hospital_affiliation.trim().length < 3) {
@@ -796,6 +788,28 @@ const DoctorSignup = ({ onSignupSuccess, onBackToLogin }) => {
  className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
  required
  />
+ </div>
+
+ <div>
+ <label className="block text-sm font-semibold text-gray-700 mb-1">
+ Province *
+ </label>
+ <select
+ name="province"
+ value={formData.province}
+ onChange={handleChange}
+ className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
+ required
+ >
+ <option value="">Select Province</option>
+ <option value="Punjab">Punjab</option>
+ <option value="Sindh">Sindh</option>
+ <option value="Khyber Pakhtunkhwa">Khyber Pakhtunkhwa</option>
+ <option value="Balochistan">Balochistan</option>
+ <option value="Islamabad">Islamabad</option>
+ <option value="Gilgit-Baltistan">Gilgit-Baltistan</option>
+ <option value="Azad Jammu & Kashmir">Azad Jammu & Kashmir</option>
+ </select>
  </div>
  </div>
 

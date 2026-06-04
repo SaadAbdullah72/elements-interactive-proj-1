@@ -13,7 +13,26 @@ import PatientVerificationForm from './PatientVerificationForm';
 import IntelliHealthInterface from './IntelliHealthInterface';
 
 function App() {
-  const [currentScreen, setCurrentScreen] = useState('login');
+  const getInitialScreen = () => {
+    if (typeof window === 'undefined') {
+      return 'login';
+    }
+    const path = window.location.pathname.replace(/\/+$/, '').toLowerCase();
+    switch (path) {
+      case '/signup':
+        return 'signup';
+      case '/verification':
+        return 'verification';
+      case '/consultation':
+        return 'consultation';
+      case '/login':
+      case '/':
+      default:
+        return 'login';
+    }
+  };
+
+  const [currentScreen, setCurrentScreen] = useState(getInitialScreen);
   const [patientData, setPatientData] = useState(null);
 
   // Update the browser tab title for each screen
@@ -90,6 +109,22 @@ function App() {
   const handleBackToLogin = () => {
     setCurrentScreen('login');
   };
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    let targetPath = '/';
+    if (currentScreen === 'signup') targetPath = '/signup';
+    else if (currentScreen === 'verification') targetPath = '/verification';
+    else if (currentScreen === 'consultation') targetPath = '/consultation';
+    else if (currentScreen === 'login') targetPath = '/login';
+
+    const currentPath = window.location.pathname.replace(/\/+$/, '') || '/';
+    if (currentPath.toLowerCase() !== targetPath.toLowerCase()) {
+      window.history.replaceState(null, '', targetPath);
+    }
+  }, [currentScreen]);
 
   const handleVerificationSuccess = (patient) => {
     setPatientData(patient);
