@@ -493,8 +493,8 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
                         </div>
 
                         <div>
-                          <label className={labelClass}>Year of Birth *</label>
-                          <input type="number" name="dob" value={addPatientData.dob} onChange={handleAddPatientChange} placeholder="e.g. 1985" min="1920" max={new Date().getFullYear()} className={inputClass} required />
+                          <label className={labelClass}>Date of Birth *</label>
+                          <input type="date" name="dob" value={addPatientData.dob} onChange={handleAddPatientChange} className={inputClass} required />
                         </div>
                         <div>
                           <label className={labelClass}>Age *</label>
@@ -655,8 +655,8 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className={labelClass}><FiCalendar className="inline mr-1" size={10} />Year of Birth *</label>
-                      <input type="number" name="dob" value={formData.dob} onChange={handleChange} placeholder="e.g. 1985" min="1920" max={new Date().getFullYear()} className={inputClass} required />
+                      <label className={labelClass}><FiCalendar className="inline mr-1" size={10} />Date of Birth *</label>
+                      <input type="date" name="dob" value={formData.dob} onChange={handleChange} className={inputClass} required />
                     </div>
                     <div>
                       <label className={labelClass}><FiCalendar className="inline mr-1" size={10} />Age *</label>
@@ -714,7 +714,14 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
               )}
             </form>
 
-
+            {/* Footer note */}
+            <div className="px-6 pb-5">
+              <div className="p-3 bg-amber-50 border border-amber-100 rounded-xl">
+                <p className="text-xs text-amber-700">
+                  <strong>Note:</strong> Use "Patient ID" mode for standard verification. Switch to "Phone Number" mode if the patient forgot their Patient ID — both are registered as unique identifiers in the system.
+                </p>
+              </div>
+            </div>
           </div>
 
           {/* Ad Section */}
