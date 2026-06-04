@@ -62,6 +62,8 @@ if not groq_api_key:
     groq_client = None
 else:
     groq_client = Groq(api_key=groq_api_key)
+groq_model = os.getenv("GROQ_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
+print(f"Using GROQ model: {groq_model}")
 
 # -------------------------
 # MongoDB Setup
@@ -271,7 +273,7 @@ RESPOND WITH ONLY the classification word, nothing else."""
 
             response1 = groq_client.chat.completions.create(
                 messages=[{"role": "user", "content": clinical_prompt}],
-                model="meta-llama/llama-4-scout-17b-16e-instruct",
+                model=groq_model,
                 max_tokens=20,
                 temperature=0.2
             )
@@ -286,7 +288,7 @@ Only respond with one word."""
 
                 response2 = groq_client.chat.completions.create(
                     messages=[{"role": "user", "content": safety_prompt}],
-                    model="meta-llama/llama-4-scout-17b-16e-instruct",
+                    model=groq_model,
                     max_tokens=5,
                     temperature=0.1
                 )
@@ -596,7 +598,7 @@ Important: Only return actual medical conditions/diseases, NOT symptoms or treat
 Format: One condition name per line."""
                     response = groq_client.chat.completions.create(
                         messages=[{"role": "user", "content": prompt}],
-                        model="meta-llama/llama-4-scout-17b-16e-instruct",
+                        model=groq_model,
                         max_tokens=100
                     )
                     diseases = response.choices[0].message.content.strip().split('\n')
@@ -702,7 +704,7 @@ Respond with ONLY the number (e.g., 87)"""
 
             response = groq_client.chat.completions.create(
                 messages=[{"role": "user", "content": prompt}],
-                model="meta-llama/llama-4-scout-17b-16e-instruct",
+                model=groq_model,
                 max_tokens=5,
                 temperature=0.3
             )
@@ -764,7 +766,7 @@ Be accurate, evidence-based, and patient-friendly. Avoid medical jargon."""
 
             response = groq_client.chat.completions.create(
                 messages=[{"role": "user", "content": prompt}],
-                model="meta-llama/llama-4-scout-17b-16e-instruct",
+                model=groq_model,
                 max_tokens=150,
                 temperature=0.5
             )
@@ -1386,7 +1388,7 @@ Be specific to this patient's age, gender, condition, and medications. Use clear
         try:
             response = groq_client.chat.completions.create(
                 messages=[{"role": "user", "content": prompt}],
-                model="meta-llama/llama-4-scout-17b-16e-instruct",
+                model=groq_model,
                 max_tokens=1200,
                 temperature=0.4
             )
@@ -1573,7 +1575,7 @@ async def upload_photo(file: UploadFile = File(...)):
                     ],
                 }
             ],
-            model="meta-llama/llama-4-scout-17b-16e-instruct",
+            model=groq_model,
         )
 
         description = chat_completion.choices[0].message.content
@@ -2657,7 +2659,7 @@ Remember: The patient is trusting you with their health concerns. Make them feel
 
         response = groq_client.chat.completions.create(
             messages=[{"role": "user", "content": prompt}],
-            model="meta-llama/llama-4-scout-17b-16e-instruct",
+            model=groq_model,
             max_tokens=1200,  # Increased for comprehensive response
             temperature=0.7
         )

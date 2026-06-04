@@ -62,6 +62,9 @@ if not groq_api_key:
     groq_client = None
 else:
     groq_client = Groq(api_key=groq_api_key)
+# Allow overriding the default Groq model via environment (e.g. MEDGEMMA)
+groq_model = os.getenv("GROQ_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
+print(f"Using GROQ model: {groq_model}")
 
 # -------------------------
 # MongoDB Setup with DB Connection Logging
@@ -279,6 +282,7 @@ def generate_advanced_ai_response(query_data: ClinicalQuery) -> Dict[str, Any]:
                 },
                 "guideline_stats": stats,
                 "validation": validation,
+                "model_used": groq_model,
                 "timestamp": datetime.utcnow().isoformat(),
             }
 
@@ -385,7 +389,7 @@ Provide comprehensive, evidence-based clinical analysis. All recommendations req
 
         response = groq_client.chat.completions.create(
             messages=messages,
-            model="meta-llama/llama-4-scout-17b-16e-instruct",
+            model=groq_model,
             max_tokens=2000,
             temperature=0.7,
         )
@@ -398,6 +402,7 @@ Provide comprehensive, evidence-based clinical analysis. All recommendations req
             "query_type": query_type,
             "conversation_type": conversation_type,
             "analyzed_uploaded_data": has_uploaded_data,
+            "model_used": groq_model,
             "timestamp": datetime.utcnow().isoformat(),
         }
 
@@ -409,7 +414,8 @@ Provide comprehensive, evidence-based clinical analysis. All recommendations req
         return {
             "success": False,
             "error": str(e),
-            "message": "Error generating AI response",
+                "message": "Error generating AI response",
+                "model_used": groq_model,
         }
 
 
@@ -440,6 +446,16 @@ async def health():
         "status": "healthy" if db_status == "connected" else "unhealthy",
         "database": {"status": db_status, "message": db_message, "name": db_name},
         "groq_api": "configured" if groq_client else "not configured",
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+
+
+@api_router.get("/model")
+async def model_info():
+    """Return the active Groq model and client status."""
+    return {
+        "groq_api": "configured" if groq_client else "not configured",
+        "model": groq_model,
         "timestamp": datetime.utcnow().isoformat(),
     }
 
