@@ -625,85 +625,6 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
                       </div>
                     </div>
 
-                    {/* Clinical Info */}
-                    <div>
-                      <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Clinical Information</p>
-                      <div className="grid grid-cols-3 gap-3">
-                        <div>
-                          <label className={labelClass}>Disease</label>
-                          <select name="disease" value={addPatientData.disease} onChange={handleAddPatientChange} className={inputClass}>
-                            <option value="">Select Disease</option>
-                            <option value="Diabetes Type 1">Diabetes Type 1</option>
-                            <option value="Diabetes Type 2">Diabetes Type 2</option>
-                            <option value="Pre Diabetic">Pre Diabetic</option>
-                            <option value="Obesity">Obesity</option>
-                            <option value="Gestational Diabetes">Gestational Diabetes</option>
-                            <option value="Other">Other</option>
-                          </select>
-                        </div>
-                        <div className="relative" ref={conditionDropdownRef}>
-                          <label className={labelClass}>Condition</label>
-                          <button
-                            type="button"
-                            onClick={() => setShowConditionDropdown(!showConditionDropdown)}
-                            className={`${inputClass} flex items-center justify-between text-left min-h-[38px]`}
-                          >
-                            <span className={selectedConditions.length === 0 ? "text-gray-400" : "text-gray-800"}>
-                              {selectedConditions.length === 0 
-                                ? "Select conditions" 
-                                : selectedConditions.join(', ')}
-                            </span>
-                            <svg className={`w-4 h-4 text-gray-400 transition-transform ${showConditionDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                            </svg>
-                          </button>
-
-                          <AnimatePresence>
-                            {showConditionDropdown && (
-                              <motion.div
-                                initial={{ opacity: 0, y: 4 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0, y: 4 }}
-                                transition={{ duration: 0.15 }}
-                                className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-60 overflow-y-auto p-1.5 space-y-0.5"
-                              >
-                                {CONDITION_OPTIONS.map((option) => {
-                                  const isSelected = selectedConditions.includes(option);
-                                  return (
-                                    <button
-                                      key={option}
-                                      type="button"
-                                      onClick={() => handleToggleCondition(option)}
-                                      className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm text-left transition-colors ${
-                                        isSelected 
-                                          ? 'bg-purple-50 text-purple-700 font-semibold' 
-                                          : 'text-gray-600 hover:bg-gray-50'
-                                      }`}
-                                    >
-                                      <span>{option}</span>
-                                      {isSelected && (
-                                        <svg className="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" />
-                                        </svg>
-                                      )}
-                                    </button>
-                                  );
-                                })}
-                              </motion.div>
-                            )}
-                          </AnimatePresence>
-                        </div>
-                        <div>
-                          <label className={labelClass}>Medication</label>
-                          <input type="text" name="medication" value={addPatientData.medication} onChange={handleAddPatientChange} placeholder="e.g. Metformin 500mg" className={inputClass} />
-                        </div>
-                        <div className="col-span-3">
-                          <label className={labelClass}>Presenting Complaint</label>
-                          <textarea name="presenting_complaint" value={addPatientData.presenting_complaint} onChange={handleAddPatientChange} rows={2} placeholder="Main complaint or reason for visit" className={inputClass + ' resize-none'} />
-                        </div>
-                      </div>
-                    </div>
-
                     {/* Vitals */}
                     <div>
                       <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Vital Signs</p>
@@ -795,6 +716,85 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
                             className={inputClass + ' bg-gray-50 cursor-not-allowed'}
                             readOnly
                           />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Clinical Info */}
+                    <div>
+                      <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Clinical Information</p>
+                      <div className="grid grid-cols-3 gap-3">
+                        <div>
+                          <label className={labelClass}>Disease</label>
+                          <select name="disease" value={addPatientData.disease} onChange={handleAddPatientChange} className={inputClass}>
+                            <option value="">Select Disease</option>
+                            <option value="Diabetes Type 1">Diabetes Type 1</option>
+                            <option value="Diabetes Type 2">Diabetes Type 2</option>
+                            <option value="Pre Diabetic">Pre Diabetic</option>
+                            <option value="Obesity">Obesity</option>
+                            <option value="Gestational Diabetes">Gestational Diabetes</option>
+                            <option value="Other">Other</option>
+                          </select>
+                        </div>
+                        <div className="relative" ref={conditionDropdownRef}>
+                          <label className={labelClass}>Condition</label>
+                          <button
+                            type="button"
+                            onClick={() => setShowConditionDropdown(!showConditionDropdown)}
+                            className={`${inputClass} flex items-center justify-between text-left min-h-[38px]`}
+                          >
+                            <span className={selectedConditions.length === 0 ? "text-gray-400" : "text-gray-800"}>
+                              {selectedConditions.length === 0 
+                                ? "Select conditions" 
+                                : selectedConditions.join(', ')}
+                            </span>
+                            <svg className={`w-4 h-4 text-gray-400 transition-transform ${showConditionDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                            </svg>
+                          </button>
+
+                          <AnimatePresence>
+                            {showConditionDropdown && (
+                              <motion.div
+                                initial={{ opacity: 0, y: 4 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: 4 }}
+                                transition={{ duration: 0.15 }}
+                                className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-xl shadow-lg max-h-60 overflow-y-auto p-1.5 space-y-0.5"
+                              >
+                                {CONDITION_OPTIONS.map((option) => {
+                                  const isSelected = selectedConditions.includes(option);
+                                  return (
+                                    <button
+                                      key={option}
+                                      type="button"
+                                      onClick={() => handleToggleCondition(option)}
+                                      className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm text-left transition-colors ${
+                                        isSelected 
+                                          ? 'bg-purple-50 text-purple-700 font-semibold' 
+                                          : 'text-gray-600 hover:bg-gray-50'
+                                      }`}
+                                    >
+                                      <span>{option}</span>
+                                      {isSelected && (
+                                        <svg className="w-4 h-4 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M5 13l4 4L19 7" />
+                                        </svg>
+                                      )}
+                                    </button>
+                                  );
+                                })}
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </div>
+                        <div>
+                          <label className={labelClass}>Medication</label>
+                          <input type="text" name="medication" value={addPatientData.medication} onChange={handleAddPatientChange} placeholder="e.g. Metformin 500mg" className={inputClass} />
+                        </div>
+                        <div className="col-span-3">
+                          <label className={labelClass}>Presenting Complaint</label>
+                          <textarea name="presenting_complaint" value={addPatientData.presenting_complaint} onChange={handleAddPatientChange} rows={2} placeholder="Main complaint or reason for visit" className={inputClass + ' resize-none'} />
                         </div>
                       </div>
                     </div>
