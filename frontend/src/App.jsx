@@ -12,6 +12,7 @@ import DoctorSignup from './DoctorSignup';
 import PatientVerificationForm from './PatientVerificationForm';
 import IntelliHealthInterface from './IntelliHealthInterface';
 import LegalPage from './LegalPage';
+import { FiPlus } from 'react-icons/fi';
 
 function App() {
   const getScreenFromLocation = () => {
@@ -276,27 +277,42 @@ function App() {
         <footer
           className="global-footer"
           style={{
-            padding: '14px 16px',
+            padding: '12px 16px',
             textAlign: 'center',
-            background: '#ffffff',
+            background: '#f8fafc',
             flexShrink: 0,
-            borderTop: '1px solid #f0f0f0',
+            borderTop: '1px solid #e2e8f0',
             display: 'flex',
             flexDirection: 'column',
             justifyContent: 'center',
-            gap: '8px',
             alignItems: 'center'
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', flexWrap: 'wrap' }}>
-            <a href="#" onClick={(e) => { e.preventDefault(); navigateToLegal('privacy'); }} style={{ color: '#6b7280', textDecoration: 'none' }}>Privacy Statement</a>
-            <span style={{ color: '#d1d5db' }}>•</span>
-            <a href="#" onClick={(e) => { e.preventDefault(); navigateToLegal('terms'); }} style={{ color: '#6b7280', textDecoration: 'none' }}>Terms and Conditions</a>
-            <span style={{ color: '#d1d5db' }}>•</span>
-            <a href="#" onClick={(e) => { e.preventDefault(); navigateToLegal('helpline'); }} style={{ color: '#6b7280', textDecoration: 'none' }}>Helpline</a>
-          </div>
-          <div style={{ color: '#6b7280', fontSize: '12px', lineHeight: '1.4' }}>
+          <div style={{ color: '#6b7280', fontSize: '11px', lineHeight: '1.4', marginBottom: currentScreen === 'consultation' ? '12px' : '8px' }}>
             This tool provides guideline-aligned suggestions only. The final diagnosis, treatment plan, and prescription are the sole responsibility of the licensed treating physician
+          </div>
+
+          {currentScreen === 'consultation' && (
+            <div className="w-full max-w-[1800px] mx-auto flex items-center justify-between px-4 mb-4">
+              <div className="flex items-center gap-3">
+                <button className="px-8 py-2.5 bg-white border border-gray-200 rounded-xl font-bold text-gray-800 shadow-sm hover:bg-gray-50 text-sm">Guidelines</button>
+                <button className="px-8 py-2.5 bg-white border border-gray-200 rounded-xl font-bold text-gray-800 shadow-sm hover:bg-gray-50 text-sm">Clinical Studies</button>
+              </div>
+              <button onClick={handleBackToVerification} className="px-8 py-2.5 bg-white border border-gray-200 rounded-xl font-bold text-gray-800 shadow-sm hover:bg-gray-50 text-sm flex items-center gap-2">
+                <FiPlus size={16} /> Next Patient
+              </button>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '4px' }}>
+            <a href="#" onClick={(e) => { e.preventDefault(); navigateToLegal('privacy'); }} style={{ color: '#6b7280', textDecoration: 'none', fontSize: '11px' }}>Privacy Statement</a>
+            <span style={{ color: '#d1d5db' }}>•</span>
+            <a href="#" onClick={(e) => { e.preventDefault(); navigateToLegal('terms'); }} style={{ color: '#6b7280', textDecoration: 'none', fontSize: '11px' }}>Terms and Conditions</a>
+            <span style={{ color: '#d1d5db' }}>•</span>
+            <a href="#" onClick={(e) => { e.preventDefault(); navigateToLegal('helpline'); }} style={{ color: '#6b7280', textDecoration: 'none', fontSize: '11px' }}>Helpline</a>
+          </div>
+          <div style={{ color: '#374151', fontSize: '12px', fontWeight: 'bold' }}>
+            Powered by Elements Interactive
           </div>
         </footer>
       )}

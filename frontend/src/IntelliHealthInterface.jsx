@@ -633,6 +633,19 @@ const IntelliHealthInterface = ({ patientData, onBack, onLogout }) => {
                 <FiAlertCircle size={10} /> AI will analyze with selected type, uploaded files, and patient data.
               </p>
             </div>
+
+            {/* Action Buttons - Stacked Vertically */}
+            <div className="flex flex-col gap-3 mt-4">
+              {[
+                { label: 'Store Session', onClick: () => alert('Session Stored!'), color: 'bg-white hover:bg-gray-50 text-gray-800 border-gray-200' },
+                { icon: <FiClock size={14} />, label: 'Current Consultation History', onClick: fetchPatientHistory, color: 'bg-white hover:bg-gray-50 text-gray-800 border-gray-200' },
+                { icon: <FiDownload size={14} />, label: 'Export Report', onClick: generatePDFReport, color: 'bg-white hover:bg-gray-50 text-gray-800 border-gray-200' }
+              ].map((btn, i) => (
+                <button key={i} onClick={btn.onClick} className={`flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-sm transition-colors border shadow-sm ${btn.color}`}>
+                  {btn.icon} {btn.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* RIGHT COLUMN: Chat Area */}
@@ -765,35 +778,7 @@ const IntelliHealthInterface = ({ patientData, onBack, onLogout }) => {
 
         </div>
 
-        {/* Action Buttons */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
-          {[
-            { icon: <FiPlus size={14} />, label: 'Next Patient', onClick: onBack, color: 'bg-white hover:bg-gray-50 text-gray-700 border-gray-200' },
-            { icon: <FiClock size={14} />, label: 'History', onClick: fetchPatientHistory, color: 'bg-white hover:bg-gray-50 text-gray-700 border-gray-200' },
-            { icon: <FiDownload size={14} />, label: 'Export Report', onClick: generatePDFReport, color: 'bg-white hover:bg-gray-50 text-gray-700 border-gray-200' }
-          ].map((btn, i) => (
-            <button key={i} onClick={btn.onClick} className={`flex items-center justify-center gap-1 sm:gap-2 py-2 sm:py-3 rounded-xl font-semibold text-xs sm:text-sm transition-colors border shadow-sm ${btn.color}`}>
-              {btn.icon} {btn.label}
-            </button>
-          ))}
-        </div>
 
-        {/* Ad */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-3">
-          <a href="#" className="block group" onClick={e => { e.preventDefault(); alert('EI Health Solutions'); }}>
-            <div className="flex items-center gap-3">
-              <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-medium flex-shrink-0">Ad</span>
-              <div className="w-16 h-7 rounded overflow-hidden flex-shrink-0">
-                <img src="/edited-photo.png" alt="EI Logo" className="w-full h-full object-cover" onError={e => e.target.style.display = 'none'} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-purple-600 group-hover:text-purple-800 truncate">EI Health Solutions</p>
-                <p className="text-xs text-gray-400 truncate">Advanced Medical Technology for Modern Healthcare</p>
-              </div>
-              <span className="text-xs text-gray-400 group-hover:text-gray-600 flex-shrink-0">Learn More →</span>
-            </div>
-          </a>
-        </div>
 
       </div>
 
