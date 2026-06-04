@@ -295,7 +295,7 @@ function App() {
             <span style={{ color: '#d1d5db' }}>•</span>
             <a href="#" onClick={(e) => { e.preventDefault(); navigateToLegal('helpline'); }} style={{ color: '#6b7280', textDecoration: 'none' }}>Helpline</a>
           </div>
-          <div style={{ color: '#6b7280', fontSize: '12px', whiteSpace: 'nowrap' }}>
+          <div style={{ color: '#6b7280', fontSize: '12px', lineHeight: '1.4' }}>
             This tool provides guideline-aligned suggestions only. The final diagnosis, treatment plan, and prescription are the sole responsibility of the licensed treating physician
           </div>
         </footer>
