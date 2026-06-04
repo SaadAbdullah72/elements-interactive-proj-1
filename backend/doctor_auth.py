@@ -29,21 +29,32 @@ router = APIRouter(prefix="/api", tags=["Doctor System"])
 # -------------------------
 # MongoDB Setup
 # -------------------------
-mongodburl = os.getenv('MONGODB_URL', os.getenv('LOCAL_MONGODB_URL', 'mongodb://localhost:27017/')) # This correctly picks up MONGODB_URL from .env
-db_name = os.getenv('MONGODB_DBFULL_DB', 'dbfull') # Use 'dbfull' as per migration guide for doctor data
+mongodburl = os.getenv('MONGODB_URL', os.getenv('LOCAL_MONGODB_URL', 'mongodb://localhost:27017/'))
+# Use the same DB name as main.py (MONGODB_LOCAL_DB / local_data) so that
+# doctor_auth and main share the same patients collection.
+# MONGODB_DBFULL_DB is kept as a fallback for environments that set it explicitly.
+db_name = os.getenv('MONGODB_LOCAL_DB', os.getenv('MONGODB_DBFULL_DB', 'local_data'))
 
 try:
     client = MongoClient(mongodburl, serverSelectionTimeoutMS=5000)
-    # Test the connection
     client.admin.command('ping')
     db = client[db_name]
     doctors_collection = db["doctors"]
     license_verifications_collection = db["license_verifications"]
-    patients_collection = db["patients"]  # For patient-related operations
+    patients_collection = db["patients"]
+
+    # -------------------------
+    # Ensure indexes for patient primary keys
+    # patid and phone_number are both unique lookup keys.
+    # phone_number uses sparse=True so existing records without a phone
+    # don't collide on null (only one null allowed per unique index by default).
+    # -------------------------
+    patients_collection.create_index("patid", unique=True, sparse=True)
+    patients_collection.create_index("phone_number", unique=True, sparse=True)
     print(f"✅ [Doctor Auth] MongoDB connected to database: {db_name}")
+    print("✅ [Doctor Auth] Patient indexes ensured: patid (unique), phone_number (unique sparse)")
 except Exception as e:
     print(f"❌ [Doctor Auth] MongoDB connection failed: {e}")
-    # Set to None so we can check for this in endpoints
     db = None
     doctors_collection = None
     license_verifications_collection = None
@@ -136,6 +147,25 @@ def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta]
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
 
+def normalize_phone(phone: str) -> str:
+    """
+    Normalize Pakistani phone numbers to a standard 11-digit 03XXXXXXXXX format.
+    Handles: +92, 0092, 92-prefix, 10-digit (missing leading 0), dashes/spaces.
+    """
+    digits = re.sub(r'\D', '', phone)
+    if digits.startswith('0092'):
+        digits = '0' + digits[4:]
+    elif digits.startswith('92') and len(digits) == 12:
+        digits = '0' + digits[2:]
+    elif digits.startswith('3') and len(digits) == 10:
+        digits = '0' + digits
+    return digits
+
+def validate_pk_phone(phone: str) -> bool:
+    """Return True if phone normalizes to a valid Pakistani mobile (03XXXXXXXXX)."""
+    normalized = normalize_phone(phone)
+    return bool(re.match(r'^03\d{9}$', normalized))
+
 def verify_pmc_license(license_number: str, doctor_name: str) -> Dict[str, Any]:
     pmc_pattern = r'^(PMC|PMDC)-\d{5,7}$'
     numeric_pattern = r'^\d{6,8}$'
@@ -201,9 +231,6 @@ def seed_default_doctor():
     Creates the default admin doctor on startup if not already present.
     Runs once when the module is loaded. Safe to call multiple times.
     """
-    # Seed a default administrative doctor if none exists. This is
-    # intended for local development and quick demos only. The function
-    # is safe to call multiple times (idempotent check up front).
     try:
         existing = doctors_collection.find_one({
             "$or": [
@@ -417,7 +444,6 @@ async def doctor_signup(signup_data: DoctorSignup):
 
     result = doctors_collection.insert_one(doctor_record)
 
-    # Ensure doctor_id is persisted, even if insertion missed it due to schema changes.
     if not doctors_collection.find_one({"_id": result.inserted_id, "doctor_id": {"$exists": True}}):
         doctors_collection.update_one(
             {"_id": result.inserted_id},
@@ -449,14 +475,12 @@ async def doctor_signup(signup_data: DoctorSignup):
 
 @router.post("/doctor/login", response_model=TokenResponse)
 async def doctor_login(login_data: DoctorLogin):
-    # Check if database is available
     if doctors_collection is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Database unavailable - MongoDB connection failed. Check MONGODB_URL environment variable on Replit."
         )
-    
-    # Case-insensitive name search
+
     doctor = doctors_collection.find_one({
         "name": {"$regex": f"^{re.escape(login_data.name)}$", "$options": "i"}
     })
@@ -573,11 +597,12 @@ async def get_doctor_profile(email: str):
 
 @router.get("/doctor/patients", response_model=List[Dict[str, Any]])
 async def get_all_patients():
-    patients_collection = db["patients"]
-    patients = list(patients_collection.find({}, {
+    patients_col = db["patients"]
+    patients = list(patients_col.find({}, {
         "caseid": 1, "patid": 1, "pname": 1, "dob": 1,
         "age": 1, "gender": 1, "disease": 1,
-        "presenting_complaint": 1, "patient_email": 1
+        "presenting_complaint": 1, "patient_email": 1,
+        "phone_number": 1   # ← include phone in list view
     }).limit(100))
 
     for patient in patients:
@@ -588,17 +613,46 @@ async def get_all_patients():
 
 @router.post("/doctor/verify-patient", response_model=Dict[str, Any])
 async def verify_patient(patient_data: dict):
-    patients_collection = db["patients"]
-    patient = patients_collection.find_one({"patid": patient_data.get("patid")})
+    """
+    Verify a patient by patid OR phone_number (dual primary key lookup).
+
+    Priority:
+      1. If patid is provided and non-empty → search by patid (original behaviour).
+      2. Else if phone_number is provided → normalize and search by phone_number.
+      3. Neither provided → 400 Bad Request.
+
+    This lets a doctor look up a patient who forgot their Patient ID by
+    supplying their registered phone number instead.
+    """
+    patients_col = db["patients"]
+
+    patid = (patient_data.get("patid") or "").strip()
+    phone_raw = (patient_data.get("phone_number") or "").strip()
+
+    if patid:
+        # Primary lookup: Patient ID
+        patient = patients_col.find_one({"patid": patid})
+        lookup_key = f"patid={patid}"
+    elif phone_raw:
+        # Fallback lookup: phone number (normalize first so format doesn't matter)
+        phone_normalized = normalize_phone(phone_raw)
+        patient = patients_col.find_one({"phone_number": phone_normalized})
+        lookup_key = f"phone={phone_normalized}"
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail={"verified": False, "reason": "Provide either patid or phone_number"}
+        )
 
     if patient is None:
         raise HTTPException(
             status_code=404,
-            detail={"verified": False, "reason": "Patient not found"}
+            detail={"verified": False, "reason": f"Patient not found ({lookup_key})"}
         )
 
     return {
         "verified": True,
+        "lookup_method": "patid" if patid else "phone_number",
         "patient": {
             "caseid": patient["caseid"],
             "patid": patient["patid"],
@@ -615,7 +669,8 @@ async def verify_patient(patient_data: dict):
             "family_history": patient.get("family_history"),
             "social_history": patient.get("social_history"),
             "allergies": patient.get("allergies"),
-            "patient_email": patient.get("patient_email")
+            "patient_email": patient.get("patient_email"),
+            "phone_number": patient.get("phone_number"),
         }
     }
 
@@ -623,7 +678,39 @@ async def verify_patient(patient_data: dict):
 @router.post("/doctor/patient/add", response_model=Dict[str, Any])
 async def add_new_patient(patient_data: dict):
     import random
-    patients_collection = db["patients"]
+    patients_col = db["patients"]
+
+    # -------------------------
+    # Phone number validation & normalization
+    # phone_number is a second primary key: required, must be valid PK format,
+    # stored in normalized form (03XXXXXXXXX) so lookups are format-agnostic.
+    # -------------------------
+    phone_raw = (patient_data.get("phone_number") or "").strip()
+    if not phone_raw:
+        raise HTTPException(
+            status_code=400,
+            detail="phone_number is required"
+        )
+    if not validate_pk_phone(phone_raw):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Invalid phone number. Must be a Pakistani mobile number "
+                "(e.g. 03001234567 or +923001234567)."
+            )
+        )
+    phone_normalized = normalize_phone(phone_raw)
+
+    # Check for duplicate phone before inserting
+    existing_phone = patients_col.find_one({"phone_number": phone_normalized})
+    if existing_phone:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"A patient with phone number {phone_normalized} already exists "
+                f"(Patient ID: {existing_phone.get('patid', 'unknown')})."
+            )
+        )
 
     try:
         case_id = f"CASE-{datetime.now().year}-{str(random.randint(10000, 99999))}"
@@ -634,6 +721,7 @@ async def add_new_patient(patient_data: dict):
             "patid": patient_id,
             "pname": patient_data.get("pname"),
             "patient_email": patient_data.get("patient_email"),
+            "phone_number": phone_normalized,       # ← normalized, indexed, unique
             "dob": patient_data.get("dob"),
             "age": int(patient_data.get("age")),
             "gender": patient_data.get("gender"),
@@ -653,7 +741,7 @@ async def add_new_patient(patient_data: dict):
             "source": "doctor_added"
         }
 
-        result = patients_collection.insert_one(new_patient)
+        result = patients_col.insert_one(new_patient)
 
         return {
             "success": True,
@@ -663,6 +751,7 @@ async def add_new_patient(patient_data: dict):
                 "patid": patient_id,
                 "pname": new_patient["pname"],
                 "patient_email": new_patient["patient_email"],
+                "phone_number": new_patient["phone_number"],
                 "age": new_patient["age"],
                 "gender": new_patient["gender"],
                 "disease": new_patient["disease"]

@@ -3,6 +3,10 @@
 // interacts with doctor-protected endpoints and should be used only by
 // authenticated clinicians. It provides searching, adding and selection
 // helpers and computes derived fields (e.g., BMI) client-side for UX.
+//
+// Phone number is now a second primary key alongside patid.
+// Verification supports lookup by patid OR phone_number so patients
+// who forgot their Patient ID can still be found quickly.
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -19,7 +23,8 @@ import {
   FiX,
   FiDroplet,
   FiHeart,
-  FiActivity
+  FiActivity,
+  FiPhone
 } from 'react-icons/fi';
 import axios from 'axios';
 import { API_URL } from './apiConfig';
@@ -34,17 +39,25 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
   const [patients, setPatients] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
 
+  // -------------------------
+  // Verification form state
+  // lookupMode toggles whether we search by patid or phone_number
+  // -------------------------
+  const [lookupMode, setLookupMode] = useState('patid'); // 'patid' | 'phone'
+
   const [formData, setFormData] = useState({
     caseid: '',
     patid: '',
     pname: '',
     dob: '',
-    age: ''
+    age: '',
+    phone_number: ''
   });
 
   const [addPatientData, setAddPatientData] = useState({
     pname: '',
     patient_email: '',
+    phone_number: '',
     dob: '',
     age: '',
     gender: '',
@@ -73,6 +86,7 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
     setAddPatientData(prev => ({ ...prev, [name]: value }));
   };
 
+  // Auto-calculate BMI from weight + height
   useEffect(() => {
     const weight = parseFloat(addPatientData.weight);
     const height = parseFloat(addPatientData.height);
@@ -81,7 +95,6 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
       const calculatedBmi = (weight / (heightInMeters * heightInMeters)).toFixed(1);
       setAddPatientData(prev => ({ ...prev, bmi: calculatedBmi }));
     } else {
-      // Reset BMI if weight or height is cleared
       setAddPatientData(prev => ({ ...prev, bmi: '' }));
     }
   }, [addPatientData.weight, addPatientData.height]);
@@ -100,12 +113,14 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
     }
   };
 
+  // Filter by name, patid, or phone
   const filteredPatients = patients.filter(patient => {
     const q = searchQuery.toLowerCase();
     if (!q) return true;
     return (
       (patient.pname && patient.pname.toLowerCase().includes(q)) ||
-      (patient.patid && patient.patid.toLowerCase().includes(q))
+      (patient.patid && patient.patid.toLowerCase().includes(q)) ||
+      (patient.phone_number && patient.phone_number.includes(q))
     );
   });
 
@@ -116,27 +131,50 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
       pname: patient.pname,
       dob: patient.dob,
       age: patient.age.toString(),
-      patient_email: patient.patient_email || ''
+      patient_email: patient.patient_email || '',
+      phone_number: patient.phone_number || ''
     });
     setShowPatientList(false);
   };
 
-  // Helper: safely parse a float field — returns null if empty or NaN
+  // Safely parse a float field — returns null if empty or NaN
   const safeFloat = (val) => {
     if (val === '' || val === null || val === undefined) return null;
     const parsed = parseFloat(val);
     return isNaN(parsed) ? null : parsed;
   };
 
+  // Client-side phone validation — matches backend normalize_phone logic
+  const normalizePhone = (phone) => {
+    const digits = phone.replace(/\D/g, '');
+    if (digits.startsWith('0092')) return '0' + digits.slice(4);
+    if (digits.startsWith('92') && digits.length === 12) return '0' + digits.slice(2);
+    if (digits.startsWith('3') && digits.length === 10) return '0' + digits;
+    return digits;
+  };
+  const isValidPkPhone = (phone) => /^03\d{9}$/.test(normalizePhone(phone));
+
   const handleAddPatient = async (e) => {
     e.preventDefault();
     setError('');
     setSuccess('');
+
+    // Validate phone before hitting backend
+    if (!addPatientData.phone_number.trim()) {
+      setError('❌ Phone number is required.');
+      return;
+    }
+    if (!isValidPkPhone(addPatientData.phone_number)) {
+      setError('❌ Invalid phone number. Use format: 03001234567 or +923001234567');
+      return;
+    }
+
     setIsLoading(true);
     try {
       const payload = {
         pname: addPatientData.pname,
         patient_email: addPatientData.patient_email || null,
+        phone_number: addPatientData.phone_number,   // required — second primary key
         dob: addPatientData.dob,
         age: parseInt(addPatientData.age),
         gender: addPatientData.gender || null,
@@ -145,7 +183,6 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
         presenting_complaint: addPatientData.presenting_complaint || null,
         bp: addPatientData.bp || null,
         pulse: addPatientData.pulse || null,
-        // FIX: use safeFloat so empty strings become null, not NaN or ""
         bmi: safeFloat(addPatientData.bmi),
         weight: safeFloat(addPatientData.weight),
         height: safeFloat(addPatientData.height),
@@ -155,24 +192,42 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
         case_notes: addPatientData.case_notes || null
       };
       const token = sessionStorage.getItem('authToken');
+      console.log('[AddPatient] Sending payload:', JSON.stringify(payload, null, 2));
       const response = await axios.post(`${API_URL}/api/doctor/patient/add`, payload, {
         headers: { Authorization: `Bearer ${token}` }
       });
+      console.log('[AddPatient] Response:', response.data);
       if (response.data.success) {
-        setSuccess(`✅ Patient added! Case ID: ${response.data.patient.caseid}, Patient ID: ${response.data.patient.patid}`);
+        setSuccess(
+          `✅ Patient added! Case ID: ${response.data.patient.caseid}, ` +
+          `Patient ID: ${response.data.patient.patid}, ` +
+          `Phone: ${response.data.patient.phone_number}`
+        );
         setTimeout(() => {
           setShowAddPatientModal(false);
           setAddPatientData({
-            pname: '', patient_email: '', dob: '', age: '', gender: '',
-            disease: '', medication: '', presenting_complaint: '', bp: '',
-            pulse: '', bmi: '', weight: '', height: '', family_history: '',
-            social_history: '', allergies: '', case_notes: ''
+            pname: '', patient_email: '', phone_number: '', dob: '', age: '',
+            gender: '', disease: '', medication: '', presenting_complaint: '',
+            bp: '', pulse: '', bmi: '', weight: '', height: '',
+            family_history: '', social_history: '', allergies: '', case_notes: ''
           });
           setSuccess('');
         }, 2000);
       }
     } catch (err) {
-      setError('❌ Failed to add patient. Please try again.');
+      console.error('[AddPatient] Error:', err.response?.data || err.message);
+      const detail = err.response?.data?.detail;
+      if (typeof detail === 'string') {
+        setError(`❌ ${detail}`);
+      } else if (typeof detail === 'object' && detail !== null) {
+        setError(`❌ ${JSON.stringify(detail)}`);
+      } else if (err.response?.status === 409) {
+        setError('❌ A patient with this phone number already exists.');
+      } else if (err.response?.status === 400) {
+        setError('❌ Invalid data. Check phone number format (e.g. 03001234567).');
+      } else {
+        setError(`❌ Failed to add patient. Status: ${err.response?.status || 'network error'}`);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -185,25 +240,40 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
     setIsLoading(true);
     try {
       const token = sessionStorage.getItem('authToken');
-      const response = await axios.post(`${API_URL}/api/doctor/verify-patient`, {
-        caseid: formData.caseid,
-        patid: formData.patid,
-        pname: formData.pname,
-        dob: formData.dob,
-        age: parseInt(formData.age)
-      }, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+
+      // Build payload based on active lookup mode
+      const payload =
+        lookupMode === 'phone'
+          ? { phone_number: formData.phone_number }
+          : {
+              caseid: formData.caseid,
+              patid: formData.patid,
+              pname: formData.pname,
+              dob: formData.dob,
+              age: parseInt(formData.age)
+            };
+
+      const response = await axios.post(
+        `${API_URL}/api/doctor/verify-patient`,
+        payload,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
       if (response.data.verified) {
-        setSuccess('✅ Patient verified successfully!');
+        const method = response.data.lookup_method === 'phone_number' ? 'phone number' : 'Patient ID';
+        setSuccess(`✅ Patient verified successfully via ${method}!`);
         setTimeout(() => { onVerificationSuccess(response.data.patient); }, 1000);
       }
     } catch (err) {
       if (err.response?.status === 404) {
-        setError('❌ Patient not found. Please check the details and try again.');
+        setError(
+          lookupMode === 'phone'
+            ? '❌ No patient found with that phone number.'
+            : '❌ Patient not found. Please check the details and try again.'
+        );
       } else if (err.response?.status === 400) {
         const detail = err.response.data.detail;
-        if (detail.mismatched_fields) {
+        if (detail?.mismatched_fields) {
           setError(`❌ Details don't match. Mismatched: ${detail.mismatched_fields.join(', ')}`);
         } else {
           setError('❌ Patient verification failed.');
@@ -288,7 +358,7 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
                 </div>
                 <div>
                   <p className="font-semibold text-gray-800 text-sm">Patient Details</p>
-                  <p className="text-xs text-gray-400">All fields must match exactly as registered</p>
+                  <p className="text-xs text-gray-400">Search by Patient ID or phone number</p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -323,7 +393,7 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
                         type="text"
                         value={searchQuery}
                         onChange={e => setSearchQuery(e.target.value)}
-                        placeholder="Search by Patient ID or Name..."
+                        placeholder="Search by Patient ID, Name, or Phone..."
                         className="flex-1 bg-transparent text-sm text-gray-700 placeholder-gray-400 focus:outline-none"
                       />
                       {searchQuery && (
@@ -358,7 +428,14 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
                           >
                             <div>
                               <p className="font-semibold text-gray-800 text-sm group-hover:text-purple-700">{patient.pname}</p>
-                              <p className="text-xs text-gray-400 mt-0.5">{patient.patid} • {patient.age} yrs • {patient.gender}</p>
+                              <p className="text-xs text-gray-400 mt-0.5">
+                                {patient.patid} • {patient.age} yrs • {patient.gender}
+                                {patient.phone_number && (
+                                  <span className="ml-2 text-blue-400">
+                                    <FiPhone className="inline" size={10} /> {patient.phone_number}
+                                  </span>
+                                )}
+                              </p>
                             </div>
                             <FiArrowRight className="text-gray-300 group-hover:text-purple-500 transition-colors" size={14} />
                           </button>
@@ -392,9 +469,29 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
                           <input type="text" name="pname" value={addPatientData.pname} onChange={handleAddPatientChange} placeholder="Full name" className={inputClass} required />
                         </div>
                         <div>
-                          <label className={labelClass}>Patient Email *</label>
-                          <input type="email" name="patient_email" value={addPatientData.patient_email} onChange={handleAddPatientChange} placeholder="patient@email.com" className={inputClass} required />
+                          <label className={labelClass}>Patient Email</label>
+                          <input type="email" name="patient_email" value={addPatientData.patient_email} onChange={handleAddPatientChange} placeholder="patient@email.com" className={inputClass} />
                         </div>
+
+                        {/* Phone Number — second primary key */}
+                        <div className="col-span-2">
+                          <label className={labelClass + ' flex items-center gap-1'}>
+                            <FiPhone className="text-blue-400" size={10} /> Phone Number * <span className="normal-case font-normal text-gray-400 ml-1">(used as second ID — must be unique)</span>
+                          </label>
+                          <input
+                            type="tel"
+                            name="phone_number"
+                            value={addPatientData.phone_number}
+                            onChange={handleAddPatientChange}
+                            placeholder="03001234567 or +923001234567"
+                            className={inputClass}
+                            required
+                          />
+                          <p className="text-xs text-gray-400 mt-1">
+                            Pakistani mobile number. Stored in standard format so patients can be found by phone if they forget their Patient ID.
+                          </p>
+                        </div>
+
                         <div>
                           <label className={labelClass}>Date of Birth *</label>
                           <input type="date" name="dob" value={addPatientData.dob} onChange={handleAddPatientChange} className={inputClass} required />
@@ -498,54 +595,130 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
               )}
             </AnimatePresence>
 
+            {/* -------------------------
+                Lookup Mode Toggle
+                Lets doctor switch between Patient ID lookup and Phone lookup
+            ------------------------- */}
+            <div className="px-6 pt-5 pb-2">
+              <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1 w-fit">
+                <button
+                  type="button"
+                  onClick={() => { setLookupMode('patid'); setError(''); }}
+                  className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
+                    lookupMode === 'patid'
+                      ? 'bg-white text-purple-700 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  <FiUser size={12} /> Patient ID
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setLookupMode('phone'); setError(''); }}
+                  className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
+                    lookupMode === 'phone'
+                      ? 'bg-white text-blue-700 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  <FiPhone size={12} /> Phone Number
+                </button>
+              </div>
+              <p className="text-xs text-gray-400 mt-2">
+                {lookupMode === 'phone'
+                  ? 'Patient forgot their ID? Look them up by registered phone number.'
+                  : 'Standard verification using Case ID and Patient ID.'}
+              </p>
+            </div>
+
             {/* Verification Form */}
-            <form onSubmit={handleVerify} className="p-6 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className={labelClass}><FiFileText className="inline mr-1" size={10} />Case ID *</label>
-                  <input type="text" name="caseid" value={formData.caseid} onChange={handleChange} placeholder="CASE-2024-00001" className={inputClass} required />
-                </div>
-                <div>
-                  <label className={labelClass}><FiUser className="inline mr-1" size={10} />Patient ID *</label>
-                  <input type="text" name="patid" value={formData.patid} onChange={handleChange} placeholder="PAT-000001" className={inputClass} required />
-                </div>
-              </div>
+            <form onSubmit={handleVerify} className="px-6 pb-6 pt-3 space-y-4">
 
-              <div>
-                <label className={labelClass}><FiUser className="inline mr-1" size={10} />Patient Name *</label>
-                <input type="text" name="pname" value={formData.pname} onChange={handleChange} placeholder="Full name as registered" className={inputClass} required />
-              </div>
+              {lookupMode === 'patid' ? (
+                /* ---- Standard Patient ID verification ---- */
+                <>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className={labelClass}><FiFileText className="inline mr-1" size={10} />Case ID *</label>
+                      <input type="text" name="caseid" value={formData.caseid} onChange={handleChange} placeholder="CASE-2024-00001" className={inputClass} required />
+                    </div>
+                    <div>
+                      <label className={labelClass}><FiUser className="inline mr-1" size={10} />Patient ID *</label>
+                      <input type="text" name="patid" value={formData.patid} onChange={handleChange} placeholder="PAT-000001" className={inputClass} required />
+                    </div>
+                  </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className={labelClass}><FiCalendar className="inline mr-1" size={10} />Date of Birth *</label>
-                  <input type="date" name="dob" value={formData.dob} onChange={handleChange} className={inputClass} required />
-                </div>
-                <div>
-                  <label className={labelClass}><FiCalendar className="inline mr-1" size={10} />Age *</label>
-                  <input type="number" name="age" value={formData.age} onChange={handleChange} placeholder="Years" className={inputClass} required />
-                </div>
-              </div>
+                  <div>
+                    <label className={labelClass}><FiUser className="inline mr-1" size={10} />Patient Name *</label>
+                    <input type="text" name="pname" value={formData.pname} onChange={handleChange} placeholder="Full name as registered" className={inputClass} required />
+                  </div>
 
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="w-full mt-2 py-3.5 rounded-xl font-bold text-white text-sm transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-md"
-                style={{ background: 'linear-gradient(135deg, #a855f7 0%, #ec4899 100%)' }}
-              >
-                {isLoading ? (
-                  <><div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> Verifying Patient...</>
-                ) : (
-                  <><FiSearch size={16} /> Verify Patient Details</>
-                )}
-              </button>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className={labelClass}><FiCalendar className="inline mr-1" size={10} />Date of Birth *</label>
+                      <input type="date" name="dob" value={formData.dob} onChange={handleChange} className={inputClass} required />
+                    </div>
+                    <div>
+                      <label className={labelClass}><FiCalendar className="inline mr-1" size={10} />Age *</label>
+                      <input type="number" name="age" value={formData.age} onChange={handleChange} placeholder="Years" className={inputClass} required />
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={isLoading}
+                    className="w-full mt-2 py-3.5 rounded-xl font-bold text-white text-sm transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-md"
+                    style={{ background: 'linear-gradient(135deg, #a855f7 0%, #ec4899 100%)' }}
+                  >
+                    {isLoading ? (
+                      <><div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> Verifying Patient...</>
+                    ) : (
+                      <><FiSearch size={16} /> Verify Patient Details</>
+                    )}
+                  </button>
+                </>
+              ) : (
+                /* ---- Phone number lookup ---- */
+                <>
+                  <div>
+                    <label className={labelClass}>
+                      <FiPhone className="inline mr-1" size={10} />Registered Phone Number *
+                    </label>
+                    <input
+                      type="tel"
+                      name="phone_number"
+                      value={formData.phone_number}
+                      onChange={handleChange}
+                      placeholder="03001234567 or +923001234567"
+                      className={inputClass}
+                      required
+                    />
+                    <p className="text-xs text-gray-400 mt-1">
+                      Enter the phone number the patient registered with. Format is flexible — we normalize automatically.
+                    </p>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={isLoading}
+                    className="w-full mt-2 py-3.5 rounded-xl font-bold text-white text-sm transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-md"
+                    style={{ background: 'linear-gradient(135deg, #3b82f6 0%, #6366f1 100%)' }}
+                  >
+                    {isLoading ? (
+                      <><div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> Searching...</>
+                    ) : (
+                      <><FiPhone size={16} /> Find Patient by Phone</>
+                    )}
+                  </button>
+                </>
+              )}
             </form>
 
             {/* Footer note */}
             <div className="px-6 pb-5">
               <div className="p-3 bg-amber-50 border border-amber-100 rounded-xl">
                 <p className="text-xs text-amber-700">
-                  <strong>Note:</strong> All fields must match exactly as registered. Use Browse Patients if unsure about details.
+                  <strong>Note:</strong> Use "Patient ID" mode for standard verification. Switch to "Phone Number" mode if the patient forgot their Patient ID — both are registered as unique identifiers in the system.
                 </p>
               </div>
             </div>
