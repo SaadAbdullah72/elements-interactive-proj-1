@@ -72,7 +72,7 @@ print(f"Using GROQ model: {groq_model}")
 mongodburl = os.getenv(
     "MONGODB_URL", os.getenv("LOCAL_MONGODB_URL", "mongodb://localhost:27017/")
 )
-db_name = os.getenv("MONGODB_LOCAL_DB", "local_data")
+db_name = os.getenv("MONGODB_DBFULL_DB", "dbfull")
 
 is_live = "mongodb+srv" in mongodburl
 

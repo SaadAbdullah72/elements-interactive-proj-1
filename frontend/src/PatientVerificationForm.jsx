@@ -24,7 +24,8 @@ import {
   FiDroplet,
   FiHeart,
   FiActivity,
-  FiPhone
+  FiPhone,
+  FiInfo
 } from 'react-icons/fi';
 import axios from 'axios';
 import { API_URL } from './apiConfig';
@@ -38,6 +39,9 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
   const [showAddPatientModal, setShowAddPatientModal] = useState(false);
   const [patients, setPatients] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [heightFeet, setHeightFeet] = useState('');
+  const [heightInches, setHeightInches] = useState('');
+  const [showHeightInfo, setShowHeightInfo] = useState(false);
 
   // -------------------------
   // Verification form state
@@ -51,7 +55,8 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
     pname: '',
     dob: '',
     age: '',
-    phone_number: ''
+    phone_number: '',
+    condition: ''
   });
 
   const [addPatientData, setAddPatientData] = useState({
@@ -62,6 +67,7 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
     age: '',
     gender: '',
     disease: '',
+    condition: '',
     medication: '',
     presenting_complaint: '',
     bp: '',
@@ -99,6 +105,51 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
     }
   }, [addPatientData.weight, addPatientData.height]);
 
+  // Auto-calculate Age from Year of Birth (dob) for Add Patient Form
+  useEffect(() => {
+    const dobVal = parseInt(addPatientData.dob);
+    const currentYear = new Date().getFullYear();
+    if (dobVal >= 1900 && dobVal <= currentYear) {
+      const calculatedAge = currentYear - dobVal;
+      setAddPatientData(prev => ({ ...prev, age: calculatedAge.toString() }));
+    } else if (!addPatientData.dob) {
+      setAddPatientData(prev => ({ ...prev, age: '' }));
+    }
+  }, [addPatientData.dob]);
+
+  // Auto-calculate Age from Year of Birth (dob) for Verification Form
+  useEffect(() => {
+    const dobVal = parseInt(formData.dob);
+    const currentYear = new Date().getFullYear();
+    if (dobVal >= 1900 && dobVal <= currentYear) {
+      const calculatedAge = currentYear - dobVal;
+      setFormData(prev => ({ ...prev, age: calculatedAge.toString() }));
+    } else if (!formData.dob) {
+      setFormData(prev => ({ ...prev, age: '' }));
+    }
+  }, [formData.dob]);
+
+  // Auto-calculate Height (cm) from Feet + Inches
+  useEffect(() => {
+    const feet = parseFloat(heightFeet) || 0;
+    const inches = parseFloat(heightInches) || 0;
+    if (feet > 0 || inches > 0) {
+      const cmVal = ((feet * 30.48) + (inches * 2.54)).toFixed(1);
+      setAddPatientData(prev => ({ ...prev, height: cmVal }));
+    } else {
+      setAddPatientData(prev => ({ ...prev, height: '' }));
+    }
+  }, [heightFeet, heightInches]);
+
+  // Reset local height state when modal is closed
+  useEffect(() => {
+    if (!showAddPatientModal) {
+      setHeightFeet('');
+      setHeightInches('');
+      setShowHeightInfo(false);
+    }
+  }, [showAddPatientModal]);
+
   const loadPatients = async () => {
     try {
       const token = sessionStorage.getItem('authToken');
@@ -132,7 +183,8 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
       dob: patient.dob,
       age: patient.age.toString(),
       patient_email: patient.patient_email || '',
-      phone_number: patient.phone_number || ''
+      phone_number: patient.phone_number || '',
+      condition: patient.condition || ''
     });
     setShowPatientList(false);
   };
@@ -165,7 +217,7 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
       return;
     }
     if (!isValidPkPhone(addPatientData.phone_number)) {
-      setError('❌ Invalid phone number. Use format: 03001234567 or +923001234567');
+      setError('❌ Enter valid 11 digit mobile no');
       return;
     }
 
@@ -179,6 +231,7 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
         age: parseInt(addPatientData.age),
         gender: addPatientData.gender || null,
         disease: addPatientData.disease || null,
+        condition: addPatientData.condition || null,
         medication: addPatientData.medication || null,
         presenting_complaint: addPatientData.presenting_complaint || null,
         bp: addPatientData.bp || null,
@@ -203,14 +256,27 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
           `Patient ID: ${response.data.patient.patid}, ` +
           `Phone: ${response.data.patient.phone_number}`
         );
+        // Autofill the main form fields with the newly created patient details
+        setFormData({
+          caseid: response.data.patient.caseid,
+          patid: response.data.patient.patid,
+          pname: response.data.patient.pname,
+          dob: response.data.patient.dob,
+          age: response.data.patient.age.toString(),
+          patient_email: response.data.patient.patient_email || '',
+          phone_number: response.data.patient.phone_number || '',
+          condition: response.data.patient.condition || ''
+        });
         setTimeout(() => {
           setShowAddPatientModal(false);
           setAddPatientData({
             pname: '', patient_email: '', phone_number: '', dob: '', age: '',
-            gender: '', disease: '', medication: '', presenting_complaint: '',
+            gender: '', disease: '', condition: '', medication: '', presenting_complaint: '',
             bp: '', pulse: '', bmi: '', weight: '', height: '',
             family_history: '', social_history: '', allergies: '', case_notes: ''
           });
+          setHeightFeet('');
+          setHeightInches('');
           setSuccess('');
         }, 2000);
       }
@@ -224,7 +290,7 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
       } else if (err.response?.status === 409) {
         setError('❌ A patient with this phone number already exists.');
       } else if (err.response?.status === 400) {
-        setError('❌ Invalid data. Check phone number format (e.g. 03001234567).');
+        setError('❌ Enter valid 11 digit mobile no');
       } else {
         setError(`❌ Failed to add patient. Status: ${err.response?.status || 'network error'}`);
       }
@@ -237,6 +303,18 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
     e.preventDefault();
     setError('');
     setSuccess('');
+
+    if (lookupMode === 'phone') {
+      if (!formData.phone_number.trim()) {
+        setError('❌ Phone number is required.');
+        return;
+      }
+      if (!isValidPkPhone(formData.phone_number)) {
+        setError('❌ Enter valid 11 digit mobile no');
+        return;
+      }
+    }
+
     setIsLoading(true);
     try {
       const token = sessionStorage.getItem('authToken');
@@ -311,8 +389,8 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
           {/* Page Title Bar */}
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h1 className="text-2xl font-bold text-gray-800">Patient Verification</h1>
-              <p className="text-sm text-gray-500 mt-0.5">Verify patient identity before consultation</p>
+              <h1 className="text-2xl font-bold text-gray-800">Patient Information</h1>
+              <p className="text-sm text-gray-500 mt-0.5">Enter patient details before consultation</p>
             </div>
             <button
               onClick={onCancel}
@@ -476,7 +554,7 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
                         {/* Phone Number — second primary key */}
                         <div className="col-span-2">
                           <label className={labelClass + ' flex items-center gap-1'}>
-                            <FiPhone className="text-blue-400" size={10} /> Phone Number * <span className="normal-case font-normal text-gray-400 ml-1">(used as second ID — must be unique)</span>
+                            <FiPhone className="text-blue-400" size={10} /> Phone Number *
                           </label>
                           <input
                             type="tel"
@@ -487,9 +565,11 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
                             className={inputClass}
                             required
                           />
-                          <p className="text-xs text-gray-400 mt-1">
-                            Pakistani mobile number. Stored in standard format so patients can be found by phone if they forget their Patient ID.
-                          </p>
+                          {addPatientData.phone_number && !isValidPkPhone(addPatientData.phone_number) && (
+                            <p className="text-xs text-red-500 mt-1">
+                              ⚠️ Enter valid 11 digit mobile no
+                            </p>
+                          )}
                         </div>
 
                         <div>
@@ -498,16 +578,41 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
                         </div>
                         <div>
                           <label className={labelClass}>Age *</label>
-                          <input type="number" name="age" value={addPatientData.age} onChange={handleAddPatientChange} placeholder="Years" className={inputClass} required />
+                          <input type="number" name="age" value={addPatientData.age} placeholder="Calculated automatically" className={`${inputClass} bg-gray-50 cursor-not-allowed`} readOnly required />
                         </div>
-                        <div className="col-span-2">
+                         <div className="col-span-2">
                           <label className={labelClass}>Gender</label>
-                          <select name="gender" value={addPatientData.gender} onChange={handleAddPatientChange} className={inputClass}>
-                            <option value="">Select</option>
-                            <option value="Male">Male</option>
-                            <option value="Female">Female</option>
-                            <option value="Other">Other</option>
-                          </select>
+                          <div className="flex gap-3 mt-1.5">
+                            {['Male', 'Female', 'Other'].map((option) => (
+                              <label
+                                key={option}
+                                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-semibold cursor-pointer transition-all ${
+                                  addPatientData.gender === option
+                                    ? 'bg-purple-50 border-purple-500 text-purple-700 shadow-sm'
+                                    : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                                }`}
+                              >
+                                <input
+                                  type="radio"
+                                  name="gender"
+                                  value={option}
+                                  checked={addPatientData.gender === option}
+                                  onChange={handleAddPatientChange}
+                                  className="sr-only"
+                                />
+                                <span className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center transition-all ${
+                                  addPatientData.gender === option
+                                    ? 'border-purple-600 bg-purple-600'
+                                    : 'border-gray-300 bg-white'
+                                }`}>
+                                  {addPatientData.gender === option && (
+                                    <span className="w-1.5 h-1.5 rounded-full bg-white" />
+                                  )}
+                                </span>
+                                {option}
+                              </label>
+                            ))}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -515,16 +620,27 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
                     {/* Clinical Info */}
                     <div>
                       <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Clinical Information</p>
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-3 gap-3">
                         <div>
-                          <label className={labelClass}>Disease/Condition</label>
-                          <input type="text" name="disease" value={addPatientData.disease} onChange={handleAddPatientChange} placeholder="e.g. Diabetes Type 2" className={inputClass} />
+                          <label className={labelClass}>Disease</label>
+                          <select name="disease" value={addPatientData.disease} onChange={handleAddPatientChange} className={inputClass}>
+                            <option value="">Select Disease</option>
+                            <option value="Diabetes Type 1">Diabetes Type 1</option>
+                            <option value="Diabetes Type 2">Diabetes Type 2</option>
+                            <option value="Obesity">Obesity</option>
+                            <option value="Gestational Diabetes">Gestational Diabetes</option>
+                            <option value="Other">Other</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className={labelClass}>Condition</label>
+                          <input type="text" name="condition" value={addPatientData.condition} onChange={handleAddPatientChange} placeholder="e.g. Stable, Mild symptoms" className={inputClass} />
                         </div>
                         <div>
                           <label className={labelClass}>Medication</label>
                           <input type="text" name="medication" value={addPatientData.medication} onChange={handleAddPatientChange} placeholder="e.g. Metformin 500mg" className={inputClass} />
                         </div>
-                        <div className="col-span-2">
+                        <div className="col-span-3">
                           <label className={labelClass}>Presenting Complaint</label>
                           <textarea name="presenting_complaint" value={addPatientData.presenting_complaint} onChange={handleAddPatientChange} rows={2} placeholder="Main complaint or reason for visit" className={inputClass + ' resize-none'} />
                         </div>
@@ -559,8 +675,69 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
                           <input type="number" name="weight" value={addPatientData.weight} onChange={handleAddPatientChange} placeholder="kg" step="0.1" className={inputClass} />
                         </div>
                         <div>
-                          <label className={labelClass}>Height (cm)</label>
-                          <input type="number" name="height" value={addPatientData.height} onChange={handleAddPatientChange} placeholder="cm" step="0.1" className={inputClass} />
+                          <label className={labelClass}>Height (Feet / Inches)</label>
+                          <div className="grid grid-cols-2 gap-2">
+                            <input
+                              type="number"
+                              placeholder="Ft"
+                              value={heightFeet}
+                              onChange={(e) => setHeightFeet(e.target.value)}
+                              className={inputClass}
+                              min="0"
+                              max="8"
+                            />
+                            <input
+                              type="number"
+                              placeholder="In"
+                              value={heightInches}
+                              onChange={(e) => setHeightInches(e.target.value)}
+                              className={inputClass}
+                              min="0"
+                              max="11.9"
+                              step="0.1"
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-1.5 mb-1.5 relative">
+                            <label className={labelClass + ' mb-0'}>Height (cm)</label>
+                            <button
+                              type="button"
+                              onClick={() => setShowHeightInfo(!showHeightInfo)}
+                              className="text-blue-500 hover:text-blue-700 flex items-center justify-center p-0.5 rounded-full hover:bg-blue-50 transition-colors"
+                            >
+                              <FiInfo size={14} />
+                            </button>
+                            
+                            {/* Tooltip */}
+                            <AnimatePresence>
+                              {showHeightInfo && (
+                                <motion.div
+                                  initial={{ opacity: 0, scale: 0.95, y: 5 }}
+                                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                                  exit={{ opacity: 0, scale: 0.95, y: 5 }}
+                                  className="absolute bottom-6 left-0 bg-gray-900/95 backdrop-blur-sm text-white text-xs p-3 rounded-xl shadow-xl z-50 w-52 border border-gray-850"
+                                >
+                                  <div className="font-bold border-b border-gray-800 pb-1.5 mb-1.5 text-purple-300">Height Conversion Info</div>
+                                  <div className="space-y-1 text-gray-200">
+                                    <div>• 1 ft = <span className="font-semibold text-white">30.48 cm</span></div>
+                                    <div>• 1 inch = <span className="font-semibold text-white">2.54 cm</span></div>
+                                  </div>
+                                  <div className="mt-2 pt-1.5 border-t border-gray-850 text-[10px] text-gray-400">
+                                    Formula: <span className="text-gray-300">(Ft × 30.48) + (In × 2.54)</span>
+                                  </div>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+                          </div>
+                          <input
+                            type="number"
+                            name="height"
+                            value={addPatientData.height}
+                            placeholder="Calculated"
+                            className={inputClass + ' bg-gray-50 cursor-not-allowed'}
+                            readOnly
+                          />
                         </div>
                       </div>
                     </div>
@@ -639,12 +816,12 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
                 <>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className={labelClass}><FiFileText className="inline mr-1" size={10} />Case ID *</label>
-                      <input type="text" name="caseid" value={formData.caseid} onChange={handleChange} placeholder="CASE-2024-00001" className={inputClass} required />
-                    </div>
-                    <div>
                       <label className={labelClass}><FiUser className="inline mr-1" size={10} />Patient ID *</label>
                       <input type="text" name="patid" value={formData.patid} onChange={handleChange} placeholder="PAT-000001" className={inputClass} required />
+                    </div>
+                    <div>
+                      <label className={labelClass}><FiFileText className="inline mr-1" size={10} />Case ID *</label>
+                      <input type="text" name="caseid" value={formData.caseid} onChange={handleChange} placeholder="CASE-2024-00001" className={inputClass} required />
                     </div>
                   </div>
 
@@ -660,20 +837,20 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
                     </div>
                     <div>
                       <label className={labelClass}><FiCalendar className="inline mr-1" size={10} />Age *</label>
-                      <input type="number" name="age" value={formData.age} onChange={handleChange} placeholder="Years" className={inputClass} required />
+                      <input type="number" name="age" value={formData.age} placeholder="Calculated automatically" className={`${inputClass} bg-gray-50 cursor-not-allowed`} readOnly required />
                     </div>
                   </div>
 
                   <button
                     type="submit"
                     disabled={isLoading}
-                    className="w-full mt-2 py-3.5 rounded-xl font-bold text-white text-sm transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-md"
+                    className="w-full mt-2 py-3.5 rounded-xl font-bold text-white text-sm transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-md hover:opacity-95"
                     style={{ background: 'linear-gradient(135deg, #a855f7 0%, #ec4899 100%)' }}
                   >
                     {isLoading ? (
-                      <><div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> Verifying Patient...</>
+                      <><div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> Moving to Consultation...</>
                     ) : (
-                      <><FiSearch size={16} /> Verify Patient Details</>
+                      <><FiSearch size={16} /> Move to Consultation Page</>
                     )}
                   </button>
                 </>
@@ -696,18 +873,23 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
                     <p className="text-xs text-gray-400 mt-1">
                       Enter the phone number the patient registered with. Format is flexible — we normalize automatically.
                     </p>
+                    {formData.phone_number && !isValidPkPhone(formData.phone_number) && (
+                      <p className="text-xs text-red-500 mt-1">
+                        ⚠️ Enter valid 11 digit mobile no
+                      </p>
+                    )}
                   </div>
 
                   <button
                     type="submit"
                     disabled={isLoading}
-                    className="w-full mt-2 py-3.5 rounded-xl font-bold text-white text-sm transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-md"
+                    className="w-full mt-2 py-3.5 rounded-xl font-bold text-white text-sm transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-md hover:opacity-95"
                     style={{ background: 'linear-gradient(135deg, #3b82f6 0%, #6366f1 100%)' }}
                   >
                     {isLoading ? (
-                      <><div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> Searching...</>
+                      <><div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> Moving to Consultation...</>
                     ) : (
-                      <><FiPhone size={16} /> Find Patient by Phone</>
+                      <><FiPhone size={16} /> Move to Consultation Page</>
                     )}
                   </button>
                 </>

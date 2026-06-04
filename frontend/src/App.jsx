@@ -11,6 +11,7 @@ import DoctorLogin from './DoctorLogin';
 import DoctorSignup from './DoctorSignup';
 import PatientVerificationForm from './PatientVerificationForm';
 import IntelliHealthInterface from './IntelliHealthInterface';
+import LegalPage from './LegalPage';
 
 function App() {
   const getScreenFromLocation = () => {
@@ -28,6 +29,15 @@ function App() {
     if (hashPath.includes('consultation')) {
       return 'consultation';
     }
+    if (hashPath.includes('privacy')) {
+      return 'privacy';
+    }
+    if (hashPath.includes('terms')) {
+      return 'terms';
+    }
+    if (hashPath.includes('helpline')) {
+      return 'helpline';
+    }
 
     const path = window.location.pathname.replace(/\/+$/, '').toLowerCase();
     if (path.includes('/signup')) {
@@ -38,6 +48,15 @@ function App() {
     }
     if (path.includes('/consultation')) {
       return 'consultation';
+    }
+    if (path.includes('/privacy')) {
+      return 'privacy';
+    }
+    if (path.includes('/terms')) {
+      return 'terms';
+    }
+    if (path.includes('/helpline')) {
+      return 'helpline';
     }
     return 'login';
   };
@@ -50,6 +69,14 @@ function App() {
 
   const [currentScreen, setCurrentScreen] = useState('login');
   const [patientData, setPatientData] = useState(null);
+  const [prevScreen, setPrevScreen] = useState('login');
+
+  const navigateToLegal = (screen) => {
+    if (!['privacy', 'terms', 'helpline'].includes(currentScreen)) {
+      setPrevScreen(currentScreen);
+    }
+    setCurrentScreen(screen);
+  };
 
   // Update the browser tab title for each screen
   useEffect(() => {
@@ -62,10 +89,19 @@ function App() {
         title = 'Create Your DiabAssist Doctor Account';
         break;
       case 'verification':
-        title = 'DiabAssist Patient Verification | AI Clinical Assistance Tool';
+        title = 'DiabAssist Patient Information | AI Clinical Assistance Tool';
         break;
       case 'consultation':
         title = 'DiabAssist Clinical Consultation | AI Clinical Assistance Tool';
+        break;
+      case 'privacy':
+        title = 'Privacy Statement | DiabAssist';
+        break;
+      case 'terms':
+        title = 'Terms & Conditions | DiabAssist';
+        break;
+      case 'helpline':
+        title = 'Helpline & Support | DiabAssist';
         break;
       default:
         title = 'DiabAssist';
@@ -150,6 +186,9 @@ function App() {
     if (currentScreen === 'signup') targetHash = '#/signup';
     else if (currentScreen === 'verification') targetHash = '#/verification';
     else if (currentScreen === 'consultation') targetHash = '#/consultation';
+    else if (currentScreen === 'privacy') targetHash = '#/privacy';
+    else if (currentScreen === 'terms') targetHash = '#/terms';
+    else if (currentScreen === 'helpline') targetHash = '#/helpline';
     else if (currentScreen === 'login') targetHash = '#/login';
 
     const currentHash = window.location.hash || '#/';
@@ -194,7 +233,7 @@ function App() {
       {/* Main Screen Content */}
       <div style={{ flex: 1 }}>
         {currentScreen === 'login' && (
-          <DoctorLogin onLoginSuccess={handleLoginSuccess} />
+          <DoctorLogin onLoginSuccess={handleLoginSuccess} onNavigate={navigateToLegal} />
         )}
 
         {currentScreen === 'signup' && (
@@ -218,10 +257,22 @@ function App() {
             onLogout={handleLogout}
           />
         )}
+
+        {currentScreen === 'privacy' && (
+          <LegalPage page="privacy" onBack={() => setCurrentScreen(prevScreen)} onNavigate={navigateToLegal} />
+        )}
+
+        {currentScreen === 'terms' && (
+          <LegalPage page="terms" onBack={() => setCurrentScreen(prevScreen)} onNavigate={navigateToLegal} />
+        )}
+
+        {currentScreen === 'helpline' && (
+          <LegalPage page="helpline" onBack={() => setCurrentScreen(prevScreen)} onNavigate={navigateToLegal} />
+        )}
       </div>
 
       {/* Global footer — hidden on login since login has its own */}
-      {currentScreen !== 'login' && (
+      {!['login', 'privacy', 'terms', 'helpline'].includes(currentScreen) && (
         <footer
           className="global-footer"
           style={{
@@ -238,11 +289,11 @@ function App() {
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', flexWrap: 'wrap' }}>
-            <a href="#" style={{ color: '#6b7280', textDecoration: 'none' }}>Privacy Statement</a>
+            <a href="#" onClick={(e) => { e.preventDefault(); navigateToLegal('privacy'); }} style={{ color: '#6b7280', textDecoration: 'none' }}>Privacy Statement</a>
             <span style={{ color: '#d1d5db' }}>•</span>
-            <a href="#" style={{ color: '#6b7280', textDecoration: 'none' }}>Terms and Conditions</a>
+            <a href="#" onClick={(e) => { e.preventDefault(); navigateToLegal('terms'); }} style={{ color: '#6b7280', textDecoration: 'none' }}>Terms and Conditions</a>
             <span style={{ color: '#d1d5db' }}>•</span>
-            <a href="#" style={{ color: '#6b7280', textDecoration: 'none' }}>Helpline</a>
+            <a href="#" onClick={(e) => { e.preventDefault(); navigateToLegal('helpline'); }} style={{ color: '#6b7280', textDecoration: 'none' }}>Helpline</a>
           </div>
           <div style={{ color: '#6b7280', fontSize: '12px', whiteSpace: 'nowrap' }}>
             This tool provides guideline-aligned suggestions only. The final diagnosis, treatment plan, and prescription are the sole responsibility of the licensed treating physician

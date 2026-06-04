@@ -25,9 +25,9 @@ router = APIRouter(prefix="/api/profile", tags=["Profile"])
 # MongoDB Setup
 # -------------------------
 mongodburl = os.getenv('MONGODB_URL', os.getenv('LOCAL_MONGODB_URL', 'mongodb://localhost:27017/'))
-db_name = os.getenv('MONGODB_LOCAL_DB', 'local')
+auth_db_name = os.getenv('MONGODB_AUTH_DB', 'authentication')
 client = MongoClient(mongodburl)
-db = client[db_name]
+db = client[auth_db_name]
 users_collection = db["users"]
 
 # -------------------------

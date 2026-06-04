@@ -30,17 +30,20 @@ router = APIRouter(prefix="/api", tags=["Doctor System"])
 # MongoDB Setup
 # -------------------------
 mongodburl = os.getenv('MONGODB_URL', os.getenv('LOCAL_MONGODB_URL', 'mongodb://localhost:27017/'))
-# Use the same DB name as main.py (MONGODB_LOCAL_DB / local_data) so that
-# doctor_auth and main share the same patients collection.
-# MONGODB_DBFULL_DB is kept as a fallback for environments that set it explicitly.
-db_name = os.getenv('MONGODB_LOCAL_DB', os.getenv('MONGODB_DBFULL_DB', 'local_data'))
+auth_db_name = os.getenv('MONGODB_AUTH_DB', 'authentication')
+app_db_name = os.getenv('MONGODB_DBFULL_DB', 'dbfull')
 
 try:
     client = MongoClient(mongodburl, serverSelectionTimeoutMS=5000)
     client.admin.command('ping')
-    db = client[db_name]
-    doctors_collection = db["doctors"]
-    license_verifications_collection = db["license_verifications"]
+    
+    # Auth database (for doctors and license_verifications)
+    auth_db = client[auth_db_name]
+    doctors_collection = auth_db["doctors"]
+    license_verifications_collection = auth_db["license_verifications"]
+    
+    # App database (for patients)
+    db = client[app_db_name]
     patients_collection = db["patients"]
 
     # -------------------------
@@ -51,10 +54,10 @@ try:
     # -------------------------
     patients_collection.create_index("patid", unique=True, sparse=True)
     patients_collection.create_index("phone_number", unique=True, sparse=True)
-    print(f"✅ [Doctor Auth] MongoDB connected to database: {db_name}")
-    print("✅ [Doctor Auth] Patient indexes ensured: patid (unique), phone_number (unique sparse)")
+    print(f"[Doctor Auth] MongoDB connected: auth_db={auth_db_name}, app_db={app_db_name}")
+    print("[Doctor Auth] Patient indexes ensured: patid (unique), phone_number (unique sparse)")
 except Exception as e:
-    print(f"❌ [Doctor Auth] MongoDB connection failed: {e}")
+    print(f"[Doctor Auth] MongoDB connection failed: {e}")
     db = None
     doctors_collection = None
     license_verifications_collection = None
@@ -299,13 +302,13 @@ def seed_default_doctor():
             "status": "completed"
         })
 
-        print(f"[Seed] ✅ Default doctor created successfully.")
+        print(f"[Seed] [OK] Default doctor created successfully.")
         print(f"[Seed]    Name: {DEFAULT_DOCTOR['name']}")
         print(f"[Seed]    Email: {DEFAULT_DOCTOR['email']}")
         print(f"[Seed]    Note: Default credentials are for development only. Do NOT expose passwords in logs or production environments.")
 
     except Exception as e:
-        print(f"[Seed] ❌ Failed to seed default doctor: {e}")
+        print(f"[Seed] [ERROR] Failed to seed default doctor: {e}")
 
 # Run seed on module load
 seed_default_doctor()
@@ -661,6 +664,7 @@ async def verify_patient(patient_data: dict):
             "age": patient["age"],
             "gender": patient.get("gender"),
             "disease": patient.get("disease"),
+            "condition": patient.get("condition"),
             "medication": patient.get("medication"),
             "presenting_complaint": patient.get("presenting_complaint"),
             "bp": patient.get("bp"),
@@ -694,10 +698,7 @@ async def add_new_patient(patient_data: dict):
     if not validate_pk_phone(phone_raw):
         raise HTTPException(
             status_code=400,
-            detail=(
-                "Invalid phone number. Must be a Pakistani mobile number "
-                "(e.g. 03001234567 or +923001234567)."
-            )
+            detail="Enter valid 11 digit mobile no"
         )
     phone_normalized = normalize_phone(phone_raw)
 
@@ -726,6 +727,7 @@ async def add_new_patient(patient_data: dict):
             "age": int(patient_data.get("age")),
             "gender": patient_data.get("gender"),
             "disease": patient_data.get("disease"),
+            "condition": patient_data.get("condition"),
             "medication": patient_data.get("medication"),
             "presenting_complaint": patient_data.get("presenting_complaint"),
             "bp": patient_data.get("bp"),
@@ -754,7 +756,8 @@ async def add_new_patient(patient_data: dict):
                 "phone_number": new_patient["phone_number"],
                 "age": new_patient["age"],
                 "gender": new_patient["gender"],
-                "disease": new_patient["disease"]
+                "disease": new_patient["disease"],
+                "condition": new_patient.get("condition")
             }
         }
 
