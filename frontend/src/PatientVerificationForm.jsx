@@ -714,14 +714,6 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
               )}
             </form>
 
-            {/* Footer note */}
-            <div className="px-6 pb-5">
-              <div className="p-3 bg-amber-50 border border-amber-100 rounded-xl">
-                <p className="text-xs text-amber-700">
-                  <strong>Note:</strong> Use "Patient ID" mode for standard verification. Switch to "Phone Number" mode if the patient forgot their Patient ID — both are registered as unique identifiers in the system.
-                </p>
-              </div>
-            </div>
           </div>
 
           {/* Ad Section */}
