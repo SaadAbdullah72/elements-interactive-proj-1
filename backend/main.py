@@ -63,7 +63,7 @@ if not groq_api_key:
 else:
     groq_client = Groq(api_key=groq_api_key)
 # Allow overriding the default Groq model via environment (e.g. MEDGEMMA)
-groq_model = os.getenv("GROQ_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
+groq_model = os.getenv("GROQ_MODEL", "google/gemma-3-27b-it")
 print(f"Using GROQ model: {groq_model}")
 
 # -------------------------
@@ -680,7 +680,7 @@ async def run_demo_case(demo_request: dict):
         "ai_analysis": result.get("content", ""),
         "analysis_metadata": {
             "response_time_seconds": response_time,
-            "ai_model": "Llama-4 via Groq",
+            "ai_model": groq_model,
         },
     }
 

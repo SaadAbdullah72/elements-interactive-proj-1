@@ -62,7 +62,7 @@ if not groq_api_key:
     groq_client = None
 else:
     groq_client = Groq(api_key=groq_api_key)
-groq_model = os.getenv("GROQ_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
+groq_model = os.getenv("GROQ_MODEL", "google/gemma-3-27b-it")
 print(f"Using GROQ model: {groq_model}")
 
 # -------------------------
