@@ -391,7 +391,7 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
   const labelClass = "block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5";
 
   return (
-    <div className="min-h-screen w-full bg-gray-50 flex flex-col">
+    <div className="min-h-[100dvh] w-full bg-gray-50 flex flex-col pb-12 md:pb-0">
       <AppHeader />
 
       {/* Subtle background pattern */}

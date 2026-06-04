@@ -372,25 +372,6 @@ const IntelliHealthInterface = ({ patientData, onBack, onLogout }) => {
     const userQueryText = query.trim() || `${selectedOption} analysis`;
     const newChatId = Date.now();
 
-    const lowerQuery = userQueryText.toLowerCase();
-    const asksAboutModel = lowerQuery.includes('what model') || lowerQuery.includes('which model') || lowerQuery.includes('what ai') || lowerQuery.includes('what llm');
-    
-    if (selectedOption === 'Generic' && asksAboutModel) {
-      setChatHistory(prev => [...prev, {
-        id: newChatId, query: userQueryText, queryType: selectedOption,
-        response: '', timestamp: new Date().toLocaleTimeString(),
-        hasImage: !!uploadedImage, hasPdf: !!uploadedPdfText, isLoading: false, isStreaming: true
-      }]);
-      
-      const gemmaResponse = "I am using the Gemma model for our clinical generic conversation. How can I assist you further with this patient?";
-      setAiResponse(gemmaResponse);
-      setStreamingResponseId(newChatId);
-      streamResponse(gemmaResponse, newChatId);
-      setQuery('');
-      setIsLoading(false);
-      return;
-    }
-
     setChatHistory(prev => [...prev, {
       id: newChatId, query: userQueryText, queryType: selectedOption,
       response: '', timestamp: new Date().toLocaleTimeString(),
@@ -470,7 +451,7 @@ const IntelliHealthInterface = ({ patientData, onBack, onLogout }) => {
   const labelClass = "block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1";
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="min-h-[100dvh] bg-gray-50 flex flex-col pb-12 md:pb-0">
       <AppHeader />
 
       {/* Subtle background */}
@@ -583,7 +564,7 @@ const IntelliHealthInterface = ({ patientData, onBack, onLogout }) => {
           <div className="grid grid-cols-4 gap-4">
             {/* Query textarea */}
             <div className="col-span-3">
-              <label className={labelClass + ' flex items-center gap-1'}><FiFileText size={10} /> Clinical Query</label>
+              <label className={labelClass + ' flex items-center gap-1'}><FiFileText size={10} /> Clinical Session</label>
               <textarea
                 ref={queryInputRef}
                 value={query}
