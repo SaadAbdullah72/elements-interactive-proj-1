@@ -33,19 +33,11 @@ import AppHeader from './AppHeader';
 
 const CONDITION_OPTIONS = [
   "Stable",
-  "Mild symptoms",
-  "Moderate symptoms",
-  "Severe symptoms",
-  "Critical",
-  "Guarded",
-  "Under observation",
-  "Chronic flare-up",
-  "Hypertension",
-  "Hyperglycemia",
-  "Hypoglycemia",
-  "Neuropathy",
-  "Retinopathy",
-  "Nephropathy"
+  "Unstable",
+  "Conscious",
+  "Unconscious",
+  "Drowsy",
+  "Other"
 ];
 
 const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
@@ -643,6 +635,7 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
                             <option value="">Select Disease</option>
                             <option value="Diabetes Type 1">Diabetes Type 1</option>
                             <option value="Diabetes Type 2">Diabetes Type 2</option>
+                            <option value="Pre Diabetic">Pre Diabetic</option>
                             <option value="Obesity">Obesity</option>
                             <option value="Gestational Diabetes">Gestational Diabetes</option>
                             <option value="Other">Other</option>
