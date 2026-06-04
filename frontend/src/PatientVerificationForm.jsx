@@ -825,11 +825,16 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
                       </div>
                     </div>
 
-                    <div className="flex gap-3 pt-1">
-                      <button type="button" onClick={() => setShowAddPatientModal(false)} className="flex-1 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-semibold text-sm transition-colors">Cancel</button>
-                      <button type="submit" disabled={isLoading} className="flex-1 py-3 text-white rounded-xl font-bold text-sm transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-md hover:shadow-lg hover:-translate-y-0.5" style={{ background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)' }}>
-                        {isLoading ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Adding...</> : <><FiCheckCircle size={15} /> Add Patient</>}
-                      </button>
+                    <div className="pt-1">
+                      <p className="text-[10px] text-gray-400 text-center mb-3">
+                        By submitting you acknowledge that the patient agrees to archive his/her personal data in the DiabAssist App
+                      </p>
+                      <div className="flex gap-3">
+                        <button type="button" onClick={() => setShowAddPatientModal(false)} className="flex-1 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-semibold text-sm transition-colors">Cancel</button>
+                        <button type="submit" disabled={isLoading} className="flex-1 py-3 text-white rounded-xl font-bold text-sm transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-md hover:shadow-lg hover:-translate-y-0.5" style={{ background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)' }}>
+                          {isLoading ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Adding...</> : <><FiCheckCircle size={15} /> Add Patient</>}
+                        </button>
+                      </div>
                     </div>
                   </form>
                 </motion.div>
@@ -883,6 +888,9 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
                 </div>
               </div>
 
+              <p className="text-[10px] text-gray-400 text-center mt-2 mb-2">
+                By submitting you acknowledge that the patient agrees to archive his/her personal data in the DiabAssist App
+              </p>
               <button
                 type="submit"
                 disabled={isLoading}
