@@ -38,6 +38,64 @@ const DoctorSignup = ({ onSignupSuccess, onBackToLogin }) => {
  const [licenseImage, setLicenseImage] = useState(null);
  const [licenseImageName, setLicenseImageName] = useState('');
 
+ const defaultSpecialties = [
+  'General Physician',
+  'Cardiologist',
+  'Neurologist',
+  'Pediatrician',
+  'Orthopedic Surgeon',
+  'Dermatologist',
+  'Gastroenterologist',
+  'Endocrinologist',
+  'Pulmonologist',
+  'Nephrologist',
+  'Oncologist',
+  'Hematologist',
+  'Rheumatologist',
+  'Infectious Disease Specialist',
+  'Allergist/Immunologist',
+  'Psychiatrist',
+  'Psychologist',
+  'Radiologist',
+  'Anesthesiologist',
+  'Pathologist',
+  'Ophthalmologist',
+  'Otolaryngologist (ENT)',
+  'Urologist',
+  'Gynecologist',
+  'Obstetrician',
+  'Plastic Surgeon',
+  'Cardiothoracic Surgeon',
+  'Neurosurgeon',
+  'Vascular Surgeon',
+  'Colorectal Surgeon',
+  'Emergency Medicine Physician',
+  'Family Medicine Physician',
+  'Internal Medicine Physician',
+  'Preventive Medicine Physician',
+  'Physical Medicine & Rehabilitation',
+  'Pain Management Specialist',
+  'Sleep Medicine Specialist',
+  'Sports Medicine Specialist',
+  'Geriatrician',
+  'Hepatologist',
+  'Intensivist (Critical Care)',
+  'Medical Geneticist',
+  'Nuclear Medicine Physician',
+  'Occupational Medicine Physician',
+  'Palliative Care Physician',
+  'Reproductive Endocrinologist',
+  'Transplant Surgeon',
+  'Trauma Surgeon',
+  'Dentist',
+  'Oral Surgeon',
+  'Periodontist',
+  'Endodontist',
+  'Orthodontist',
+  'Prosthodontist',
+  'Pediatric Dentist'
+ ];
+
  const [formData, setFormData] = useState({
  // Account credentials
  email: '',
@@ -77,6 +135,22 @@ const DoctorSignup = ({ onSignupSuccess, onBackToLogin }) => {
  setFormData(prev => ({ ...prev, [name]: value }));
  setError('');
  };
+
+ useEffect(() => {
+   const loadSpecialties = async () => {
+     try {
+       const response = await axios.get(`${API_URL}/api/doctor/specialties`);
+       if (Array.isArray(response.data) && response.data.length) {
+         setSpecialties(response.data);
+       } else {
+         setSpecialties(defaultSpecialties);
+       }
+     } catch (err) {
+       setSpecialties(defaultSpecialties);
+     }
+   };
+   loadSpecialties();
+ }, []);
 
  const formatCNIC = (value) => {
  // Remove all non-digits
@@ -334,23 +408,23 @@ const DoctorSignup = ({ onSignupSuccess, onBackToLogin }) => {
  };
 
  return (
- <div className="min-h-screen bg-purple-400 flex items-center justify-center p-4">
+ <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-start p-4 relative overflow-hidden">
  <AppHeader />
  {/* Background decorations */}
- <div className="absolute inset-0 overflow-hidden">
- <div className="absolute top-20 left-10 w-72 h-72 bg-purple-300 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob"></div>
- <div className="absolute top-40 right-10 w-72 h-72 bg-purple-200 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob animation-delay-2000"></div>
- <div className="absolute bottom-20 left-1/2 w-72 h-72 bg-purple-400 rounded-full mix-blend-multiply filter blur-3xl opacity-30 animate-blob animation-delay-4000"></div>
+ <div className="absolute inset-0 overflow-hidden pointer-events-none">
+ <div className="absolute top-20 left-10 w-72 h-72 bg-slate-300 rounded-full mix-blend-multiply filter blur-3xl opacity-20"></div>
+ <div className="absolute top-40 right-10 w-72 h-72 bg-teal-200 rounded-full mix-blend-multiply filter blur-3xl opacity-25"></div>
+ <div className="absolute bottom-20 left-1/2 w-72 h-72 bg-slate-200 rounded-full mix-blend-multiply filter blur-3xl opacity-20"></div>
  </div>
 
  {/* Main Container */}
  <motion.div
  initial={{ opacity: 0, y: 20 }}
  animate={{ opacity: 1, y: 0 }}
- className="relative w-full max-w-4xl bg-teal-100 rounded-3xl shadow-2xl overflow-hidden"
+ className="relative w-full max-w-4xl bg-white rounded-3xl shadow-2xl overflow-hidden"
  >
  {/* Header */}
- <div className="bg-purple-400 px-8 py-6 text-white">
+ <div className="bg-slate-900 px-8 py-6 text-white">
  <div className="flex items-center justify-between">
  <div className="flex items-center gap-4">
  <div className="w-14 h-14 rounded-2xl bg-white/20 flex items-center justify-center backdrop-blur-sm">

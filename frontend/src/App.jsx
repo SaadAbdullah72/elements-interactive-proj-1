@@ -13,24 +13,42 @@ import PatientVerificationForm from './PatientVerificationForm';
 import IntelliHealthInterface from './IntelliHealthInterface';
 
 function App() {
-  const getInitialScreen = () => {
+  const getScreenFromLocation = () => {
     if (typeof window === 'undefined') {
       return 'login';
     }
-    const path = window.location.pathname.replace(/\/+$/, '').toLowerCase();
-    if (path === '/signup' || path === '/doctor/signup' || path === '/doctor-signup' || path.includes('/signup')) {
+
+    const hashPath = window.location.hash.toLowerCase().replace(/^#\/?/, '');
+    if (hashPath.includes('signup')) {
       return 'signup';
     }
-    if (path === '/verification' || path.includes('/verification')) {
+    if (hashPath.includes('verification')) {
       return 'verification';
     }
-    if (path === '/consultation' || path.includes('/consultation')) {
+    if (hashPath.includes('consultation')) {
+      return 'consultation';
+    }
+
+    const path = window.location.pathname.replace(/\/+$/, '').toLowerCase();
+    if (path.includes('/signup')) {
+      return 'signup';
+    }
+    if (path.includes('/verification')) {
+      return 'verification';
+    }
+    if (path.includes('/consultation')) {
       return 'consultation';
     }
     return 'login';
   };
 
-  const [currentScreen, setCurrentScreen] = useState(getInitialScreen);
+  const isLiveDeployment = () => {
+    if (typeof window === 'undefined') return false;
+    const host = window.location.hostname.toLowerCase();
+    return !['localhost', '127.0.0.1', '::1'].includes(host);
+  };
+
+  const [currentScreen, setCurrentScreen] = useState('login');
   const [patientData, setPatientData] = useState(null);
 
   // Update the browser tab title for each screen
@@ -56,16 +74,29 @@ function App() {
   }, [currentScreen]);
 
   useEffect(() => {
-    // If a previous doctor session flag exists in localStorage but
-    // sessionStorage has no auth token, the user likely closed the tab
-    // and reopened it — force logout (clear flag) so they aren't silently logged in.
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const routeScreen = getScreenFromLocation();
+    const live = isLiveDeployment();
+
+    if (live && routeScreen === 'signup') {
+      setCurrentScreen('login');
+      return;
+    }
+
+    if (routeScreen === 'signup') {
+      setCurrentScreen('signup');
+      return;
+    }
+
     const sessionFlag = localStorage.getItem('doctorSessionActive');
     const token = sessionStorage.getItem('authToken');
     const role = sessionStorage.getItem('userRole');
     const savedPatient = localStorage.getItem('currentPatient');
 
     if (sessionFlag && !token) {
-      // clear persistent markers and remain on login screen
       localStorage.removeItem('doctorSessionActive');
       localStorage.removeItem('currentPatient');
       setPatientData(null);
@@ -80,7 +111,10 @@ function App() {
       } else {
         setCurrentScreen('verification');
       }
+      return;
     }
+
+    setCurrentScreen(routeScreen);
   }, []);
 
   const handleLoginSuccess = (token, doctor) => {
@@ -112,15 +146,21 @@ function App() {
     if (typeof window === 'undefined') {
       return;
     }
-    let targetPath = '/';
-    if (currentScreen === 'signup') targetPath = '/signup';
-    else if (currentScreen === 'verification') targetPath = '/verification';
-    else if (currentScreen === 'consultation') targetPath = '/consultation';
-    else if (currentScreen === 'login') targetPath = '/login';
+    let targetHash = '#/';
+    if (currentScreen === 'signup') targetHash = '#/signup';
+    else if (currentScreen === 'verification') targetHash = '#/verification';
+    else if (currentScreen === 'consultation') targetHash = '#/consultation';
+    else if (currentScreen === 'login') targetHash = '#/login';
 
-    const currentPath = window.location.pathname.replace(/\/+$/, '') || '/';
-    if (currentPath.toLowerCase() !== targetPath.toLowerCase()) {
-      window.history.replaceState(null, '', targetPath);
+    const currentHash = window.location.hash || '#/';
+    if (currentHash.toLowerCase() !== targetHash.toLowerCase()) {
+      window.location.hash = targetHash;
+    }
+  }, [currentScreen]);
+
+  useEffect(() => {
+    if (currentScreen === 'signup' && isLiveDeployment()) {
+      setCurrentScreen('login');
     }
   }, [currentScreen]);
 

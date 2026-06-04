@@ -417,8 +417,16 @@ async def doctor_signup(signup_data: DoctorSignup):
 
     result = doctors_collection.insert_one(doctor_record)
 
+    # Ensure doctor_id is persisted, even if insertion missed it due to schema changes.
+    if not doctors_collection.find_one({"_id": result.inserted_id, "doctor_id": {"$exists": True}}):
+        doctors_collection.update_one(
+            {"_id": result.inserted_id},
+            {"$set": {"doctor_id": doctor_id}}
+        )
+
     license_verifications_collection.insert_one({
-        "doctor_id": str(result.inserted_id),
+        "doctor_id": doctor_id,
+        "doctor_db_id": str(result.inserted_id),
         "email": signup_data.email,
         "name": signup_data.name,
         "medical_council_registration": signup_data.medical_council_registration,
@@ -431,7 +439,7 @@ async def doctor_signup(signup_data: DoctorSignup):
         "success": True,
         "message": "Registration successful! Your account is " +
                    ("active" if license_verification["verified"] else "pending license verification"),
-        "doctor_id": doctor_record["doctor_id"],
+        "doctor_id": doctor_id,
         "email": signup_data.email,
         "account_status": doctor_record["account_status"],
         "license_verified": license_verification["verified"],
