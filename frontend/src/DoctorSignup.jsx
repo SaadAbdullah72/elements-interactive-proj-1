@@ -260,15 +260,14 @@ const DoctorSignup = ({ onSignupSuccess, onBackToLogin }) => {
  return;
  }
  if (!formData.date_of_birth) {
- setError('Please select your date of birth');
+ setError('Please enter your year of birth');
  return;
  }
- // Validate age matches DOB
- const dob = new Date(formData.date_of_birth);
- const today = new Date();
- const calculatedAge = today.getFullYear() - dob.getFullYear();
- if (calculatedAge < 21 || calculatedAge > 100) {
- setError('Age must be between 21 and 100 years');
+ // Validate year of birth
+ const birthYear = parseInt(formData.date_of_birth);
+ const currentYear = new Date().getFullYear();
+ if (birthYear < 1920 || birthYear > currentYear - 21) {
+ setError(`Year of birth must be between 1920 and ${currentYear - 21}`);
  return;
  }
  if (!formData.gender) {
@@ -619,13 +618,16 @@ const DoctorSignup = ({ onSignupSuccess, onBackToLogin }) => {
 
  <div>
  <label className="block text-sm font-semibold text-gray-700 mb-1">
- Date of Birth *
+ Year of Birth *
  </label>
  <input
- type="date"
+ type="number"
  name="date_of_birth"
  value={formData.date_of_birth}
  onChange={handleChange}
+ placeholder="e.g. 1985"
+ min="1920"
+ max={new Date().getFullYear() - 21}
  className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
  required
  />
