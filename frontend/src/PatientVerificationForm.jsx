@@ -762,6 +762,16 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
               >
                 <FiPlus size={14} /> Add Patient
               </button>
+
+              {/* Guidelines & Clinical Studies Buttons */}
+              <div className="flex items-center gap-3 justify-center w-full mt-6 pt-6 border-t border-gray-100">
+                <button className="px-8 py-2.5 bg-white border border-gray-200 rounded-xl font-bold text-gray-800 shadow-sm hover:bg-gray-50 text-sm">
+                  Guidelines
+                </button>
+                <button className="px-8 py-2.5 bg-white border border-gray-200 rounded-xl font-bold text-gray-800 shadow-sm hover:bg-gray-50 text-sm">
+                  Clinical Studies
+                </button>
+              </div>
             </div>
 
           </div>
