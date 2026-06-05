@@ -382,11 +382,11 @@ const IntelliHealthInterface = ({ patientData, onBack, onLogout }) => {
       const token = sessionStorage.getItem('authToken');
       const response = await axios.post(`${API_URL}/api/clinical-analysis`, {
         caseid: editableData.caseid, patid: editableData.patid, pname: editableData.pname,
-        dob: editableData.dob, age: parseInt(editableData.age), gender: editableData.gender,
+        dob: editableData.dob, age: parseInt(editableData.age) || 0, gender: editableData.gender,
         disease: editableData.disease, medication: editableData.medication,
         query_type: selectedOption, custom_query: query,
         presenting_complaint: editableData.presenting_complaint,
-        bp: editableData.bp, pulse: editableData.pulse, bmi: editableData.bmi,
+        bp: editableData.bp, pulse: editableData.pulse, bmi: parseFloat(editableData.bmi) || 0.0,
         family_history: editableData.family_history, social_history: editableData.social_history,
         allergies: editableData.allergies, image_data: uploadedImage,
         image_name: uploadedImageName, pdf_text: uploadedPdfText, pdf_name: uploadedPdfName,
@@ -410,7 +410,11 @@ const IntelliHealthInterface = ({ patientData, onBack, onLogout }) => {
         setQuery('');
       }
     } catch (error) {
-      const errorMsg = 'Error: ' + (error.response?.data?.detail || error.message || 'Failed to get AI response');
+      let detailMsg = error.response?.data?.detail;
+      if (detailMsg && typeof detailMsg === 'object') {
+        detailMsg = JSON.stringify(detailMsg);
+      }
+      const errorMsg = 'Error: ' + (detailMsg || error.message || 'Failed to get AI response');
       setChatHistory(prev => prev.map(chat =>
         chat.id === newChatId ? { ...chat, response: errorMsg, isLoading: false, isError: true, isStreaming: false } : chat
       ));
