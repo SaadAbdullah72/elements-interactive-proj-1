@@ -1,23 +1,29 @@
-import React from 'react';
+import React, { useState } from 'react';
 
-const AdRotator = ({ page }) => {
-  // Map page prop to a static banner image
-  let currentAd = "/Banner_01.jpg.jpeg"; // Default
-  if (page === "verification") {
-    currentAd = "/Banner_01.jpg.jpeg";
-  } else if (page === "consultation") {
-    currentAd = "/Banner_02.jpg.jpeg";
-  } else if (page === "login") {
-    currentAd = "/Banner_03.jpg.jpeg";
-  }
+const ADS = [
+  "/Banner_01.jpg.jpeg",
+  "/Banner_02.jpg.jpeg",
+  "/Banner_03.jpg.jpeg"
+];
+
+const AdRotator = () => {
+  // Choose a random banner once on mount/refresh
+  const [currentAd] = useState(() => {
+    const randomIndex = Math.floor(Math.random() * ADS.length);
+    return ADS[randomIndex];
+  });
 
   return (
-    <div className="mt-4 overflow-hidden w-full rounded-2xl border border-gray-100 shadow-sm">
-      <a href="#" onClick={e => { e.preventDefault(); console.log('Ad clicked'); }} className="block w-full">
+    <div className="mt-6 w-full flex justify-center items-center">
+      <a 
+        href="#" 
+        onClick={e => { e.preventDefault(); console.log('Ad clicked'); }} 
+        className="block w-full max-w-[420px]"
+      >
         <img 
           src={currentAd} 
           alt="Advertisement" 
-          className="w-full h-[60px] object-cover block rounded-2xl" 
+          className="w-full h-auto object-contain block rounded-2xl shadow-sm border border-gray-100/80 hover:shadow-md transition-all duration-300" 
           onError={e => e.target.style.display = 'none'} 
         />
       </a>
