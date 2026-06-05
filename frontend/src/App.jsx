@@ -292,15 +292,19 @@ function App() {
             This tool provides guideline-aligned suggestions only. The final diagnosis, treatment plan, and prescription are the sole responsibility of the licensed treating physician
           </div>
 
-          {currentScreen === 'consultation' && (
-            <div className="w-full max-w-[1800px] mx-auto flex items-center justify-between px-4 mb-4">
+          {['consultation', 'verification'].includes(currentScreen) && (
+            <div className={`w-full max-w-[1800px] mx-auto flex items-center px-4 mb-4 ${
+              currentScreen === 'consultation' ? 'justify-between' : 'justify-center'
+            }`}>
               <div className="flex items-center gap-3">
                 <button className="px-8 py-2.5 bg-white border border-gray-200 rounded-xl font-bold text-gray-800 shadow-sm hover:bg-gray-50 text-sm">Guidelines</button>
                 <button className="px-8 py-2.5 bg-white border border-gray-200 rounded-xl font-bold text-gray-800 shadow-sm hover:bg-gray-50 text-sm">Clinical Studies</button>
               </div>
-              <button onClick={handleBackToVerification} className="px-8 py-2.5 bg-white border border-gray-200 rounded-xl font-bold text-gray-800 shadow-sm hover:bg-gray-50 text-sm flex items-center gap-2">
-                <FiPlus size={16} /> Next Patient
-              </button>
+              {currentScreen === 'consultation' && (
+                <button onClick={handleBackToVerification} className="px-8 py-2.5 bg-white border border-gray-200 rounded-xl font-bold text-gray-800 shadow-sm hover:bg-gray-50 text-sm flex items-center gap-2">
+                  <FiPlus size={16} /> Next Patient
+                </button>
+              )}
             </div>
           )}
 

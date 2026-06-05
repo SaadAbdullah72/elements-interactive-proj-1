@@ -55,15 +55,7 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
   const [showConditionDropdown, setShowConditionDropdown] = useState(false);
   const conditionDropdownRef = React.useRef(null);
 
-  const [formData, setFormData] = useState({
-    caseid: '',
-    patid: '',
-    pname: '',
-    dob: '',
-    age: '',
-    phone_number: '',
-    condition: ''
-  });
+
 
   const [addPatientData, setAddPatientData] = useState({
     pname: '',
@@ -87,11 +79,7 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
     case_notes: ''
   });
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-    setError('');
-  };
+
 
   const handleAddPatientChange = (e) => {
     const { name, value } = e.target;
@@ -140,17 +128,7 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
     }
   }, [addPatientData.dob]);
 
-  // Auto-calculate Age from Year of Birth (dob) for Verification Form
-  useEffect(() => {
-    const dobVal = parseInt(formData.dob);
-    const currentYear = new Date().getFullYear();
-    if (dobVal >= 1900 && dobVal <= currentYear) {
-      const calculatedAge = currentYear - dobVal;
-      setFormData(prev => ({ ...prev, age: calculatedAge.toString() }));
-    } else if (!formData.dob) {
-      setFormData(prev => ({ ...prev, age: '' }));
-    }
-  }, [formData.dob]);
+
 
   // Auto-calculate Height (cm) from Feet + Inches
   useEffect(() => {
@@ -210,17 +188,8 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
   });
 
   const selectPatient = (patient) => {
-    setFormData({
-      caseid: patient.caseid,
-      patid: patient.patid,
-      pname: patient.pname,
-      dob: patient.dob,
-      age: patient.age.toString(),
-      patient_email: patient.patient_email || '',
-      phone_number: patient.phone_number || '',
-      condition: patient.condition || ''
-    });
     setShowPatientList(false);
+    onVerificationSuccess(patient);
   };
 
   // Safely parse a float field — returns null if empty or NaN
@@ -290,17 +259,7 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
           `Patient ID: ${response.data.patient.patid}, ` +
           `Phone: ${response.data.patient.phone_number}`
         );
-        // Autofill the main form fields with the newly created patient details
-        setFormData({
-          caseid: response.data.patient.caseid,
-          patid: response.data.patient.patid,
-          pname: response.data.patient.pname,
-          dob: response.data.patient.dob || addPatientData.dob,
-          age: response.data.patient.age.toString(),
-          patient_email: response.data.patient.patient_email || '',
-          phone_number: response.data.patient.phone_number || '',
-          condition: response.data.patient.condition || ''
-        });
+        const newPatient = response.data.patient;
         setTimeout(() => {
           setShowAddPatientModal(false);
           setAddPatientData({
@@ -312,6 +271,7 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
           setHeightFeet('');
           setHeightInches('');
           setSuccess('');
+          onVerificationSuccess(newPatient);
         }, 2000);
       }
     } catch (err) {
@@ -333,131 +293,7 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
     }
   };
 
-  // ─────────────────────────────────────────────────────────────────────────────
-  // handleVerify — strict frontend + backend cross-check
-  // ─────────────────────────────────────────────────────────────────────────────
-  const handleVerify = async (e) => {
-    e.preventDefault();
-    setError('');
-    setSuccess('');
 
-    // 1. Trim all fields first
-    const trimmed = {
-      caseid: formData.caseid.trim(),
-      patid: formData.patid.trim(),
-      pname: formData.pname.trim(),
-      dob: formData.dob.toString().trim(),
-      age: formData.age.toString().trim(),
-    };
-
-    // 2. Require all fields
-    if (!trimmed.caseid || !trimmed.patid || !trimmed.pname || !trimmed.dob || !trimmed.age) {
-      setError('❌ All fields are required. Please fill in every field before verifying.');
-      return;
-    }
-
-    // 3. Validate Year of Birth range
-    const dobVal = parseInt(trimmed.dob);
-    const currentYear = new Date().getFullYear();
-    if (isNaN(dobVal) || dobVal < 1920 || dobVal > currentYear) {
-      setError(`❌ Year of Birth must be between 1920 and ${currentYear}.`);
-      return;
-    }
-
-    // 4. Age must be consistent with Year of Birth
-    const expectedAge = currentYear - dobVal;
-    const enteredAge = parseInt(trimmed.age);
-    if (isNaN(enteredAge) || enteredAge !== expectedAge) {
-      setError(`❌ Age (${enteredAge}) doesn't match Year of Birth (${dobVal}). Expected age: ${expectedAge}.`);
-      return;
-    }
-
-    // 5. Name sanity check
-    if (trimmed.pname.length < 2) {
-      setError('❌ Patient name seems too short. Please enter the full registered name.');
-      return;
-    }
-
-    setIsLoading(true);
-    try {
-      const token = sessionStorage.getItem('authToken');
-
-      // Send every verifiable field — backend must match ALL of them
-      const payload = {
-        caseid: trimmed.caseid,
-        patid: trimmed.patid,
-        pname: trimmed.pname,
-        dob: trimmed.dob,
-        age: enteredAge,
-      };
-
-      console.log('[Verify] Sending payload:', JSON.stringify(payload, null, 2));
-
-      const response = await axios.post(
-        `${API_URL}/api/doctor/verify-patient`,
-        payload,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-
-      console.log('[Verify] Response:', response.data);
-
-      if (response.data.verified) {
-        // 6. Cross-check EVERY returned field against what we submitted
-        //    Even if the backend says "verified", the returned patient data
-        //    must match what the clinician entered — guards against loose
-        //    backend matching (e.g. patid-only lookup ignoring name/dob).
-        const p = response.data.patient;
-        const mismatches = [];
-
-        const normalize = (s) => (s ?? '').toString().trim().toLowerCase();
-
-        if (normalize(p.patid) !== normalize(trimmed.patid)) mismatches.push('Patient ID');
-        if (normalize(p.caseid) !== normalize(trimmed.caseid)) mismatches.push('Case ID');
-        if (normalize(p.pname) !== normalize(trimmed.pname)) mismatches.push('Patient Name');
-        if (normalize(p.dob) !== normalize(trimmed.dob)) mismatches.push('Year of Birth');
-        if (parseInt(p.age) !== enteredAge) mismatches.push('Age');
-
-        if (mismatches.length > 0) {
-          setError(
-            `❌ Details don't match the records. ` +
-            `Mismatched field(s): ${mismatches.join(', ')}. ` +
-            `Please correct and try again.`
-          );
-          return;
-        }
-
-        const method = response.data.lookup_method === 'phone_number' ? 'phone number' : 'Patient ID';
-        setSuccess(`✅ Patient verified successfully via ${method}!`);
-        setTimeout(() => { onVerificationSuccess(response.data.patient); }, 1000);
-
-      } else {
-        // Backend returned 200 but verified: false
-        setError('❌ Patient could not be verified. Please check all details and try again.');
-      }
-
-    } catch (err) {
-      console.error('[Verify] Error:', err.response?.data || err.message);
-
-      if (err.response?.status === 404) {
-        setError('❌ Patient not found. Please check the details and try again.');
-      } else if (err.response?.status === 400) {
-        const detail = err.response.data?.detail;
-        if (detail?.mismatched_fields) {
-          setError(`❌ Details don't match records. Mismatched: ${detail.mismatched_fields.join(', ')}`);
-        } else if (typeof detail === 'string') {
-          setError(`❌ ${detail}`);
-        } else {
-          setError('❌ Patient verification failed. Please check all fields.');
-        }
-      } else if (err.response?.status === 422) {
-        setError('❌ Invalid data format. Please check all fields and try again.');
-      } else {
-        setError('❌ Verification failed. Please try again.');
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const inputClass = "w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-transparent transition-all text-gray-800 placeholder-gray-400 text-sm shadow-sm";
   const labelClass = "block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5";
@@ -914,7 +750,7 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
             {/* -------------------------
                 Patient Verification Header
             ------------------------- */}
-            <div className="px-6 pt-5 pb-2 flex flex-col items-start">
+            <div className="px-6 pt-5 pb-6 flex flex-col items-start">
               <p className="text-xs text-gray-400">
                 Standard verification using Case ID and Patient ID.
               </p>
@@ -927,53 +763,6 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
                 <FiPlus size={14} /> Add Patient
               </button>
             </div>
-
-            {/* Verification Form */}
-            <form onSubmit={handleVerify} className="px-6 pb-6 pt-3 space-y-4">
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className={labelClass}><FiUser className="inline mr-1" size={10} />Patient ID *</label>
-                  <input type="text" name="patid" value={formData.patid} onChange={handleChange} placeholder="PAT-000001" className={inputClass} required />
-                </div>
-                <div>
-                  <label className={labelClass}><FiFileText className="inline mr-1" size={10} />Case ID *</label>
-                  <input type="text" name="caseid" value={formData.caseid} onChange={handleChange} placeholder="CASE-2024-00001" className={inputClass} required />
-                </div>
-              </div>
-
-              <div>
-                <label className={labelClass}><FiUser className="inline mr-1" size={10} />Patient Name *</label>
-                <input type="text" name="pname" value={formData.pname} onChange={handleChange} placeholder="Full name as registered" className={inputClass} required />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className={labelClass}><FiCalendar className="inline mr-1" size={10} />Year of Birth *</label>
-                  <input type="number" name="dob" value={formData.dob} onChange={handleChange} placeholder="e.g. 1985" min="1920" max={new Date().getFullYear()} className={inputClass} required />
-                </div>
-                <div>
-                  <label className={labelClass}><FiCalendar className="inline mr-1" size={10} />Age *</label>
-                  <input type="number" name="age" value={formData.age} placeholder="Calculated automatically" className={`${inputClass} bg-gray-50 cursor-not-allowed`} readOnly required />
-                </div>
-              </div>
-
-              <p className="text-[10px] text-gray-400 text-center mt-2 mb-2">
-                By submitting you acknowledge that the patient agrees to archive his/her personal data in the DiabAssist App
-              </p>
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="w-full mt-2 py-3.5 rounded-xl font-bold text-white text-sm transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-md hover:opacity-95"
-                style={{ background: 'linear-gradient(135deg, #a855f7 0%, #ec4899 100%)' }}
-              >
-                {isLoading ? (
-                  <><div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> Moving to Consultation...</>
-                ) : (
-                  <><FiSearch size={16} /> Move to Consultation Page</>
-                )}
-              </button>
-            </form>
 
           </div>
 
