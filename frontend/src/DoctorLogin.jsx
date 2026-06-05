@@ -421,6 +421,9 @@ const DoctorLogin = ({ onLoginSuccess, onNavigate }) => {
             <span>•</span>
             <a href="#" onClick={(e) => { e.preventDefault(); onNavigate('helpline'); }}>Helpline</a>
           </div>
+          <div style={{ color: '#374151', fontSize: '12px', fontWeight: 'bold', marginTop: '8px' }}>
+            Powered by Elements Interactive
+          </div>
         </footer>
 
         <img src={BOTTOM_LEFT_IMG} alt="" className="bottom-left-decoration" />
