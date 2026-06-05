@@ -8,6 +8,8 @@ import React, { useState } from 'react';
 import axios from 'axios';
 import { API_URL } from './apiConfig';
 import AppHeader from './AppHeader';
+import AdRotator from './AdRotator';
+
 
 const DEFAULT_NAME = 'DrAdmin';
 const DEFAULT_PASSWORD = 'Doctor@1122';
@@ -410,6 +412,9 @@ const DoctorLogin = ({ onLoginSuccess, onNavigate }) => {
                 objectFit: 'contain'
               }} />
           </div>
+
+          {/* Static Banner */}
+          <AdRotator page="login" />
         </section>
 
         {/* ── FOOTER ── */}
