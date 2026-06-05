@@ -30,6 +30,7 @@ import {
 import axios from 'axios';
 import { API_URL } from './apiConfig';
 import AppHeader from './AppHeader';
+import AdRotator from './AdRotator';
 
 const CONDITION_OPTIONS = [
   "Stable",
@@ -901,21 +902,7 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
           </div>
 
           {/* Ad Section */}
-          <div className="mt-4 bg-white rounded-2xl border border-gray-100 shadow-sm p-3">
-            <a href="#" className="block group" onClick={e => { e.preventDefault(); alert('EI Health Solutions - Advertisement'); }}>
-              <div className="flex items-center gap-3">
-                <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-medium flex-shrink-0">Ad</span>
-                <div className="w-16 h-7 rounded overflow-hidden flex-shrink-0">
-                  <img src="/edited-photo.png" alt="EI Logo" className="w-full h-full object-cover" onError={e => e.target.style.display = 'none'} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-purple-600 group-hover:text-purple-800 truncate">EI Health Solutions</p>
-                  <p className="text-xs text-gray-500 truncate">Advanced Medical Technology for Modern Healthcare</p>
-                </div>
-                <span className="text-xs text-gray-400 group-hover:text-gray-600 flex-shrink-0">Learn More →</span>
-              </div>
-            </a>
-          </div>
+          <AdRotator />
 
         </motion.div>
       </div>

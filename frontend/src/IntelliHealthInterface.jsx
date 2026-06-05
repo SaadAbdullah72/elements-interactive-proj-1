@@ -28,6 +28,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { API_URL } from './apiConfig';
 import AppHeader from './AppHeader';
+import AdRotator from './AdRotator';
 
 const stripMarkdown = (text) => {
   if (!text) return '';
@@ -778,7 +779,10 @@ const IntelliHealthInterface = ({ patientData, onBack, onLogout }) => {
 
         </div>
 
-
+        {/* Ad Section Full Width */}
+        <div className="w-full mt-2">
+          <AdRotator />
+        </div>
 
       </div>
 
