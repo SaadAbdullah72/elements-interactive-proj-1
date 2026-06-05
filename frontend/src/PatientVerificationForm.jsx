@@ -777,7 +777,7 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
           </div>
 
           {/* Ad Section */}
-          <AdRotator />
+          <AdRotator page="verification" />
 
         </motion.div>
       </div>

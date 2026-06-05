@@ -1,31 +1,46 @@
 import React, { useState, useEffect } from 'react';
 
-// You can add your webp/jpg banners here
 const ADS = [
-  "/edited-photo.png",
-  "/myimage.png",
-  "/myimage.jpeg"
+  "/Banner_01.jpg.jpeg",
+  "/Banner_02.jpg.jpeg",
+  "/Banner_03.jpg.jpeg"
 ];
 
-const AdRotator = () => {
-  const [currentAd, setCurrentAd] = useState('');
+const AdRotator = ({ page }) => {
+  // Determine start index based on the page prop
+  const getStartIndex = () => {
+    if (page === "verification") return 0;
+    if (page === "consultation") return 1;
+    return Math.floor(Math.random() * ADS.length);
+  };
+
+  const [currentIndex, setCurrentIndex] = useState(getStartIndex());
 
   useEffect(() => {
-    // Pick a random ad when the component mounts (e.g., when doctor logs in/views page)
-    const randomAd = ADS[Math.floor(Math.random() * ADS.length)];
-    setCurrentAd(randomAd);
+    // Reset index if page prop changes
+    setCurrentIndex(getStartIndex());
+  }, [page]);
+
+  useEffect(() => {
+    // Rotate/change the banner every 7 seconds
+    const interval = setInterval(() => {
+      setCurrentIndex((prevIndex) => (prevIndex + 1) % ADS.length);
+    }, 7000);
+
+    return () => clearInterval(interval);
   }, []);
+
+  const currentAd = ADS[currentIndex];
 
   if (!currentAd) return null;
 
   return (
-    <div className="mt-4 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden w-full h-[48px]">
-      <a href="#" onClick={e => { e.preventDefault(); console.log('Ad clicked'); }} className="block w-full h-full">
-        {/* The image will span the full width of its container and adjust height automatically */}
+    <div className="mt-4 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden w-full flex justify-center items-center">
+      <a href="#" onClick={e => { e.preventDefault(); console.log('Ad clicked'); }} className="block w-full">
         <img 
           src={currentAd} 
           alt="Advertisement" 
-          className="w-full h-full object-cover" 
+          className="w-full h-auto max-h-[120px] object-contain block mx-auto rounded-2xl transition-all duration-500" 
           onError={e => e.target.style.display = 'none'} 
         />
       </a>

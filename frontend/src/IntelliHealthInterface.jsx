@@ -781,7 +781,7 @@ const IntelliHealthInterface = ({ patientData, onBack, onLogout }) => {
 
         {/* Ad Section Full Width */}
         <div className="w-full mt-2">
-          <AdRotator />
+          <AdRotator page="consultation" />
         </div>
 
       </div>
