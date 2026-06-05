@@ -333,23 +333,65 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
     }
   };
 
+  // ─────────────────────────────────────────────────────────────────────────────
+  // handleVerify — strict frontend + backend cross-check
+  // ─────────────────────────────────────────────────────────────────────────────
   const handleVerify = async (e) => {
     e.preventDefault();
     setError('');
     setSuccess('');
 
+    // 1. Trim all fields first
+    const trimmed = {
+      caseid: formData.caseid.trim(),
+      patid: formData.patid.trim(),
+      pname: formData.pname.trim(),
+      dob: formData.dob.toString().trim(),
+      age: formData.age.toString().trim(),
+    };
+
+    // 2. Require all fields
+    if (!trimmed.caseid || !trimmed.patid || !trimmed.pname || !trimmed.dob || !trimmed.age) {
+      setError('❌ All fields are required. Please fill in every field before verifying.');
+      return;
+    }
+
+    // 3. Validate Year of Birth range
+    const dobVal = parseInt(trimmed.dob);
+    const currentYear = new Date().getFullYear();
+    if (isNaN(dobVal) || dobVal < 1920 || dobVal > currentYear) {
+      setError(`❌ Year of Birth must be between 1920 and ${currentYear}.`);
+      return;
+    }
+
+    // 4. Age must be consistent with Year of Birth
+    const expectedAge = currentYear - dobVal;
+    const enteredAge = parseInt(trimmed.age);
+    if (isNaN(enteredAge) || enteredAge !== expectedAge) {
+      setError(`❌ Age (${enteredAge}) doesn't match Year of Birth (${dobVal}). Expected age: ${expectedAge}.`);
+      return;
+    }
+
+    // 5. Name sanity check
+    if (trimmed.pname.length < 2) {
+      setError('❌ Patient name seems too short. Please enter the full registered name.');
+      return;
+    }
+
     setIsLoading(true);
     try {
       const token = sessionStorage.getItem('authToken');
 
-      // Build payload
+      // Send every verifiable field — backend must match ALL of them
       const payload = {
-        caseid: formData.caseid,
-        patid: formData.patid,
-        pname: formData.pname,
-        dob: formData.dob,
-        age: parseInt(formData.age)
+        caseid: trimmed.caseid,
+        patid: trimmed.patid,
+        pname: trimmed.pname,
+        dob: trimmed.dob,
+        age: enteredAge,
       };
+
+      console.log('[Verify] Sending payload:', JSON.stringify(payload, null, 2));
 
       const response = await axios.post(
         `${API_URL}/api/doctor/verify-patient`,
@@ -357,21 +399,58 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
+      console.log('[Verify] Response:', response.data);
+
       if (response.data.verified) {
+        // 6. Cross-check EVERY returned field against what we submitted
+        //    Even if the backend says "verified", the returned patient data
+        //    must match what the clinician entered — guards against loose
+        //    backend matching (e.g. patid-only lookup ignoring name/dob).
+        const p = response.data.patient;
+        const mismatches = [];
+
+        const normalize = (s) => (s ?? '').toString().trim().toLowerCase();
+
+        if (normalize(p.patid) !== normalize(trimmed.patid)) mismatches.push('Patient ID');
+        if (normalize(p.caseid) !== normalize(trimmed.caseid)) mismatches.push('Case ID');
+        if (normalize(p.pname) !== normalize(trimmed.pname)) mismatches.push('Patient Name');
+        if (normalize(p.dob) !== normalize(trimmed.dob)) mismatches.push('Year of Birth');
+        if (parseInt(p.age) !== enteredAge) mismatches.push('Age');
+
+        if (mismatches.length > 0) {
+          setError(
+            `❌ Details don't match the records. ` +
+            `Mismatched field(s): ${mismatches.join(', ')}. ` +
+            `Please correct and try again.`
+          );
+          return;
+        }
+
         const method = response.data.lookup_method === 'phone_number' ? 'phone number' : 'Patient ID';
         setSuccess(`✅ Patient verified successfully via ${method}!`);
         setTimeout(() => { onVerificationSuccess(response.data.patient); }, 1000);
+
+      } else {
+        // Backend returned 200 but verified: false
+        setError('❌ Patient could not be verified. Please check all details and try again.');
       }
+
     } catch (err) {
+      console.error('[Verify] Error:', err.response?.data || err.message);
+
       if (err.response?.status === 404) {
         setError('❌ Patient not found. Please check the details and try again.');
       } else if (err.response?.status === 400) {
-        const detail = err.response.data.detail;
+        const detail = err.response.data?.detail;
         if (detail?.mismatched_fields) {
-          setError(`❌ Details don't match. Mismatched: ${detail.mismatched_fields.join(', ')}`);
+          setError(`❌ Details don't match records. Mismatched: ${detail.mismatched_fields.join(', ')}`);
+        } else if (typeof detail === 'string') {
+          setError(`❌ ${detail}`);
         } else {
-          setError('❌ Patient verification failed.');
+          setError('❌ Patient verification failed. Please check all fields.');
         }
+      } else if (err.response?.status === 422) {
+        setError('❌ Invalid data format. Please check all fields and try again.');
       } else {
         setError('❌ Verification failed. Please try again.');
       }
@@ -589,17 +668,16 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
                           <label className={labelClass}>Age *</label>
                           <input type="number" name="age" value={addPatientData.age} placeholder="Calculated automatically" className={`${inputClass} bg-gray-50 cursor-not-allowed`} readOnly required />
                         </div>
-                         <div className="col-span-2">
+                        <div className="col-span-2">
                           <label className={labelClass}>Gender</label>
                           <div className="flex gap-3 mt-1.5">
                             {['Male', 'Female', 'Other'].map((option) => (
                               <label
                                 key={option}
-                                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-semibold cursor-pointer transition-all ${
-                                  addPatientData.gender === option
+                                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm font-semibold cursor-pointer transition-all ${addPatientData.gender === option
                                     ? 'bg-purple-50 border-purple-500 text-purple-700 shadow-sm'
                                     : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
-                                }`}
+                                  }`}
                               >
                                 <input
                                   type="radio"
@@ -609,11 +687,10 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
                                   onChange={handleAddPatientChange}
                                   className="sr-only"
                                 />
-                                <span className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center transition-all ${
-                                  addPatientData.gender === option
+                                <span className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center transition-all ${addPatientData.gender === option
                                     ? 'border-purple-600 bg-purple-600'
                                     : 'border-gray-300 bg-white'
-                                }`}>
+                                  }`}>
                                   {addPatientData.gender === option && (
                                     <span className="w-1.5 h-1.5 rounded-full bg-white" />
                                   )}
@@ -687,7 +764,7 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
                             >
                               <FiInfo size={14} />
                             </button>
-                            
+
                             {/* Tooltip */}
                             <AnimatePresence>
                               {showHeightInfo && (
@@ -745,8 +822,8 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
                             className={`${inputClass} flex items-center justify-between text-left min-h-[38px]`}
                           >
                             <span className={selectedConditions.length === 0 ? "text-gray-400" : "text-gray-800"}>
-                              {selectedConditions.length === 0 
-                                ? "Select conditions" 
+                              {selectedConditions.length === 0
+                                ? "Select conditions"
                                 : selectedConditions.join(', ')}
                             </span>
                             <svg className={`w-4 h-4 text-gray-400 transition-transform ${showConditionDropdown ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -770,11 +847,10 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
                                       key={option}
                                       type="button"
                                       onClick={() => handleToggleCondition(option)}
-                                      className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm text-left transition-colors ${
-                                        isSelected 
-                                          ? 'bg-purple-50 text-purple-700 font-semibold' 
+                                      className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm text-left transition-colors ${isSelected
+                                          ? 'bg-purple-50 text-purple-700 font-semibold'
                                           : 'text-gray-600 hover:bg-gray-50'
-                                      }`}
+                                        }`}
                                     >
                                       <span>{option}</span>
                                       {isSelected && (
