@@ -41,7 +41,7 @@ const CONDITION_OPTIONS = [
   "Other"
 ];
 
-const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
+const PatientVerificationForm = ({ onVerificationSuccess, onCancel, onNavigate }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -777,10 +777,10 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
 
               {/* Guidelines & Clinical Studies Buttons */}
               <div className="flex items-center gap-3 justify-center w-full mt-6 pt-6 border-t border-gray-100">
-                <button className="px-8 py-2.5 bg-white border border-gray-200 rounded-xl font-bold text-gray-800 shadow-sm hover:bg-gray-50 text-sm">
+                <button onClick={() => onNavigate?.('guidelines')} className="px-8 py-2.5 bg-white border border-gray-200 rounded-xl font-bold text-gray-800 shadow-sm hover:bg-gray-50 text-sm">
                   Guidelines
                 </button>
-                <button className="px-8 py-2.5 bg-white border border-gray-200 rounded-xl font-bold text-gray-800 shadow-sm hover:bg-gray-50 text-sm">
+                <button onClick={() => onNavigate?.('clinical-studies')} className="px-8 py-2.5 bg-white border border-gray-200 rounded-xl font-bold text-gray-800 shadow-sm hover:bg-gray-50 text-sm">
                   Clinical Studies
                 </button>
               </div>

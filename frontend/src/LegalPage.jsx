@@ -91,6 +91,76 @@ const LegalPage = ({ page, onBack, onNavigate }) => {
         </section>
       </div>
     );
+  } else if (page === 'guidelines') {
+    title = 'Guidelines';
+    content = (
+      <div className="legal-content-wrapper">
+        <section className="legal-section">
+          <h3>DiabAssist Clinical Guidelines</h3>
+          <p>
+            These guidelines are designed to support registered clinicians in Pakistan with clear, practical advice for routine diabetes care and management.
+          </p>
+        </section>
+
+        <section className="legal-section">
+          <h3>1. Patient Data Use</h3>
+          <p>
+            We use patient information only for consultation support, diagnosis aid, and treatment planning. Data entered during verification and consultation is not shared outside the clinic or the DiabAssist system.
+          </p>
+        </section>
+
+        <section className="legal-section">
+          <h3>2. Recommended Clinical Actions</h3>
+          <ul>
+            <li>Confirm patient identity and basic vital signs before proceeding.</li>
+            <li>Review blood glucose readings, blood pressure, and complications history.</li>
+            <li>Use guideline suggestions as a reference, not as a final decision.</li>
+          </ul>
+        </section>
+
+        <section className="legal-section">
+          <h3>3. Local Care Context</h3>
+          <p>
+            Treatment recommendations are intended for healthcare settings in Pakistan. Always cross-check with local practice standards and the patient’s current medication regimen.
+          </p>
+        </section>
+      </div>
+    );
+  } else if (page === 'clinical-studies') {
+    title = 'Clinical Studies';
+    content = (
+      <div className="legal-content-wrapper">
+        <section className="legal-section">
+          <h3>Pakistan-Focused Clinical Evidence</h3>
+          <p>
+            This section highlights clinical findings and study notes relevant to diabetes care in Pakistan.
+          </p>
+        </section>
+
+        <section className="legal-section">
+          <h3>1. Local Population Considerations</h3>
+          <p>
+            Diabetes patterns in Pakistan often include high rates of type 2 diabetes, hypertension, and complications linked to diet and access to regular monitoring. Clinical decisions should reflect these realities.
+          </p>
+        </section>
+
+        <section className="legal-section">
+          <h3>2. Study Summary</h3>
+          <p>
+            Recent studies in Pakistan show that patient compliance, medication affordability, and primary care follow-up are key factors in effective diabetes management.
+          </p>
+        </section>
+
+        <section className="legal-section">
+          <h3>3. Practical Notes for Pakistani Clinicians</h3>
+          <ul>
+            <li>Encourage regular glucose monitoring and documentation.</li>
+            <li>Explain treatment adjustments in the local language and cultural context.</li>
+            <li>Consider patient access to medicines when recommending therapy changes.</li>
+          </ul>
+        </section>
+      </div>
+    );
   } else if (page === 'helpline') {
     title = 'Helpline & Support';
     content = (

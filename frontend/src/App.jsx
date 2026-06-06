@@ -39,6 +39,12 @@ function App() {
     if (hashPath.includes('helpline')) {
       return 'helpline';
     }
+    if (hashPath.includes('guidelines')) {
+      return 'guidelines';
+    }
+    if (hashPath.includes('clinical-studies')) {
+      return 'clinical-studies';
+    }
 
     const path = window.location.pathname.replace(/\/+$/, '').toLowerCase();
     if (path.includes('/signup')) {
@@ -59,6 +65,12 @@ function App() {
     if (path.includes('/helpline')) {
       return 'helpline';
     }
+    if (path.includes('/guidelines')) {
+      return 'guidelines';
+    }
+    if (path.includes('/clinical-studies')) {
+      return 'clinical-studies';
+    }
     return 'login';
   };
 
@@ -73,7 +85,7 @@ function App() {
   const [prevScreen, setPrevScreen] = useState('login');
 
   const navigateToLegal = (screen) => {
-    if (!['privacy', 'terms', 'helpline'].includes(currentScreen)) {
+    if (!['privacy', 'terms', 'helpline', 'guidelines', 'clinical-studies'].includes(currentScreen)) {
       setPrevScreen(currentScreen);
     }
     setCurrentScreen(screen);
@@ -103,6 +115,12 @@ function App() {
         break;
       case 'helpline':
         title = 'Helpline & Support | DiabAssist';
+        break;
+      case 'guidelines':
+        title = 'Guidelines | DiabAssist';
+        break;
+      case 'clinical-studies':
+        title = 'Clinical Studies | DiabAssist';
         break;
       default:
         title = 'DiabAssist';
@@ -190,6 +208,8 @@ function App() {
     else if (currentScreen === 'privacy') targetHash = '#/privacy';
     else if (currentScreen === 'terms') targetHash = '#/terms';
     else if (currentScreen === 'helpline') targetHash = '#/helpline';
+    else if (currentScreen === 'guidelines') targetHash = '#/guidelines';
+    else if (currentScreen === 'clinical-studies') targetHash = '#/clinical-studies';
     else if (currentScreen === 'login') targetHash = '#/login';
 
     const currentHash = window.location.hash || '#/';
@@ -248,6 +268,7 @@ function App() {
           <PatientVerificationForm
             onVerificationSuccess={handleVerificationSuccess}
             onCancel={handleLogout}
+            onNavigate={navigateToLegal}
           />
         )}
 
@@ -269,6 +290,14 @@ function App() {
 
         {currentScreen === 'helpline' && (
           <LegalPage page="helpline" onBack={() => setCurrentScreen(prevScreen)} onNavigate={navigateToLegal} />
+        )}
+
+        {currentScreen === 'guidelines' && (
+          <LegalPage page="guidelines" onBack={() => setCurrentScreen(prevScreen)} onNavigate={navigateToLegal} />
+        )}
+
+        {currentScreen === 'clinical-studies' && (
+          <LegalPage page="clinical-studies" onBack={() => setCurrentScreen(prevScreen)} onNavigate={navigateToLegal} />
         )}
       </div>
 
@@ -295,8 +324,8 @@ function App() {
           {currentScreen === 'consultation' && (
             <div className="w-full max-w-[1800px] mx-auto flex items-center justify-between px-4 mb-4">
               <div className="flex items-center gap-3">
-                <button className="px-8 py-2.5 bg-white border border-gray-200 rounded-xl font-bold text-gray-800 shadow-sm hover:bg-gray-50 text-sm">Guidelines</button>
-                <button className="px-8 py-2.5 bg-white border border-gray-200 rounded-xl font-bold text-gray-800 shadow-sm hover:bg-gray-50 text-sm">Clinical Studies</button>
+                <button onClick={() => navigateToLegal('guidelines')} className="px-8 py-2.5 bg-white border border-gray-200 rounded-xl font-bold text-gray-800 shadow-sm hover:bg-gray-50 text-sm">Guidelines</button>
+                <button onClick={() => navigateToLegal('clinical-studies')} className="px-8 py-2.5 bg-white border border-gray-200 rounded-xl font-bold text-gray-800 shadow-sm hover:bg-gray-50 text-sm">Clinical Studies</button>
               </div>
               <button onClick={handleBackToVerification} className="px-8 py-2.5 bg-white border border-gray-200 rounded-xl font-bold text-gray-800 shadow-sm hover:bg-gray-50 text-sm flex items-center gap-2">
                 <FiPlus size={16} /> Next Patient
