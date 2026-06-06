@@ -91,6 +91,24 @@ function App() {
     setCurrentScreen(screen);
   };
 
+  const isAuthenticated = () => {
+    const token = sessionStorage.getItem('authToken');
+    const role = sessionStorage.getItem('userRole');
+    const sessionFlag = localStorage.getItem('doctorSessionActive');
+    return Boolean(token && role === 'doctor' && sessionFlag === 'true');
+  };
+
+  const clearAuthAndRedirect = () => {
+    sessionStorage.removeItem('authToken');
+    sessionStorage.removeItem('userRole');
+    sessionStorage.removeItem('doctorName');
+    sessionStorage.removeItem('doctorEmail');
+    localStorage.removeItem('doctorSessionActive');
+    localStorage.removeItem('currentPatient');
+    setPatientData(null);
+    setCurrentScreen('login');
+  };
+
   // Update the browser tab title for each screen
   useEffect(() => {
     let title = 'DiabAssist';
@@ -146,20 +164,12 @@ function App() {
       return;
     }
 
-    const sessionFlag = localStorage.getItem('doctorSessionActive');
     const token = sessionStorage.getItem('authToken');
     const role = sessionStorage.getItem('userRole');
+    const sessionFlag = localStorage.getItem('doctorSessionActive');
     const savedPatient = localStorage.getItem('currentPatient');
 
-    if (sessionFlag && !token) {
-      localStorage.removeItem('doctorSessionActive');
-      localStorage.removeItem('currentPatient');
-      setPatientData(null);
-      setCurrentScreen('login');
-      return;
-    }
-
-    if (token && role === 'doctor') {
+    if (token && role === 'doctor' && sessionFlag === 'true') {
       if (savedPatient) {
         setPatientData(JSON.parse(savedPatient));
         setCurrentScreen('consultation');
@@ -169,7 +179,31 @@ function App() {
       return;
     }
 
-    setCurrentScreen(routeScreen);
+    if (token && sessionFlag !== 'true') {
+      sessionStorage.removeItem('authToken');
+      sessionStorage.removeItem('userRole');
+      sessionStorage.removeItem('doctorName');
+      sessionStorage.removeItem('doctorEmail');
+    }
+
+    if (routeScreen === 'privacy' || routeScreen === 'terms' || routeScreen === 'helpline' || routeScreen === 'guidelines' || routeScreen === 'clinical-studies') {
+      setCurrentScreen(routeScreen);
+    } else {
+      setCurrentScreen('login');
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleStorageEvent = (event) => {
+      if (event.key === 'doctorSessionActive' && event.newValue !== 'true') {
+        clearAuthAndRedirect();
+      }
+    };
+
+    window.addEventListener('storage', handleStorageEvent);
+    return () => window.removeEventListener('storage', handleStorageEvent);
   }, []);
 
   const handleLoginSuccess = (token, doctor) => {
