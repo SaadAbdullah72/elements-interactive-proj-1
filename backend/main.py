@@ -120,12 +120,40 @@ app.add_middleware(
 )
 
 # ── Groq client ────────────────────────────────────────────────────────────────
-groq_api_key = os.getenv("GROQ_API_KEY")
+groq_api_key = os.getenv("GROQ_API_KEY", "")
 groq_client = Groq(api_key=groq_api_key) if groq_api_key else None
-groq_model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+groq_model_primary = "google/gemma-3-27b-it"
+groq_model_fallbacks = ["google/gemma-3-13b-it", "llama-3.3-70b-versatile"]
+groq_models = [groq_model_primary] + groq_model_fallbacks
+groq_model = groq_model_primary
 print(
-    f"[AI] Model: {groq_model} | Client: {'ready' if groq_client else 'NOT configured'}"
+    f"[AI] Primary Model: {groq_model_primary} | Fallbacks: {groq_model_fallbacks} | Client: {'ready' if groq_client else 'NOT configured'}"
 )
+
+
+# ── Groq model runner with fallback support ───────────────────────────────────
+def _call_groq_with_model(messages, max_tokens=4096, temperature=0.3):
+    last_error = None
+    for model in groq_models:
+        try:
+            print(f"[AI] Attempting model: {model}")
+            completion = groq_client.chat.completions.create(
+                messages=messages,
+                model=model,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            return completion, model
+        except Exception as e:
+            err_text = str(e).lower()
+            print(f"[AI] Model {model} failed: {e}")
+            last_error = e
+            if any(x in err_text for x in ["rate limit", "rate_limit_exceeded", "tokens per day", "quota", "model_not_found", "does not exist"]):
+                print(f"[AI] Model {model} unavailable or rate-limited, trying next fallback model.")
+                continue
+            raise
+    raise last_error if last_error else RuntimeError("Unknown Groq error")
+
 
 # ── MongoDB ────────────────────────────────────────────────────────────────────
 mongodburl = os.getenv("MONGODB_URL", "mongodb://localhost:27017/")
@@ -296,7 +324,7 @@ def _retrieve_similar_cases(disease: str, query_type: str, limit: int = 3) -> st
         return ""
 
 
-def _save_interaction(query_data, response_content: str, ada_refs: list):
+def _save_interaction(query_data, response_content: str, ada_refs: list, model_used: str):
     """Persist an AI interaction to the learning journal for future adaptation."""
     if learning_journal_collection is None:
         return
@@ -313,7 +341,7 @@ def _save_interaction(query_data, response_content: str, ada_refs: list):
                 "ada_refs": ada_refs,
                 "rating": None,
                 "doctor_feedback": None,
-                "model": groq_model,
+                "model": model_used,
                 "created_at": datetime.utcnow().isoformat(),
             }
         )
@@ -515,24 +543,19 @@ Author/Organization (Year). Title. Journal. Volume(Issue):Pages. DOI.
     ]
 
     try:
-        chat_completion = groq_client.chat.completions.create(
-            messages=messages,
-            model=groq_model,
-            temperature=0.3,
-            max_tokens=4096,
-        )
+        chat_completion, used_model = _call_groq_with_model(messages)
         response_content = chat_completion.choices[0].message.content
 
         # ── Persist to learning journal ────────────────────────────────────────
         ada_refs = _extract_ada_refs(response_content)
-        _save_interaction(query_data, response_content, ada_refs)
+        _save_interaction(query_data, response_content, ada_refs, used_model)
 
         return {
             "success": True,
             "content": response_content,
             "usage": guideline_usage,
             "ada_refs_found": ada_refs,
-            "model": groq_model,
+            "model": used_model,
         }
     except Exception as e:
         print(f"[AI] Groq API error: {e}")
