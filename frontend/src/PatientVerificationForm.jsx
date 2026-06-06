@@ -7,6 +7,7 @@
 // Phone number is now a second primary key alongside patid.
 // Verification supports lookup by patid OR phone_number so patients
 // who forgot their Patient ID can still be found quickly.
+
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {

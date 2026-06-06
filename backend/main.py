@@ -122,8 +122,9 @@ app.add_middleware(
 # ── Groq client ────────────────────────────────────────────────────────────────
 groq_api_key = os.getenv("GROQ_API_KEY", "")
 groq_client = Groq(api_key=groq_api_key) if groq_api_key else None
+# Primary model: prefer LLaMA 3.3. Fallbacks updated to active, supported options.
 groq_model_primary = "llama-3.3-70b-versatile"
-groq_model_fallbacks = ["llama-3.2-90b-vision-preview", "gemma-2-9b-it"]
+groq_model_fallbacks = ["gemma-2-9b-it", "qwen/qwen3-32b"]
 groq_models = [groq_model_primary] + groq_model_fallbacks
 groq_model = groq_model_primary
 print(
