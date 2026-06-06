@@ -122,7 +122,7 @@ app.add_middleware(
 # ── Groq client ────────────────────────────────────────────────────────────────
 groq_api_key = os.getenv("GROQ_API_KEY", "")
 groq_client = Groq(api_key=groq_api_key) if groq_api_key else None
-groq_model_primary = "llama-3.1-70b-versatile"
+groq_model_primary = "qwen/qwen3-32b"
 groq_model_fallbacks = ["mixtral-8x7b-32768", "llama-2-70b-chat"]
 groq_models = [groq_model_primary] + groq_model_fallbacks
 groq_model = groq_model_primary
@@ -804,7 +804,7 @@ async def model_info():
     return {
         "groq_api": "configured" if groq_client else "not configured",
         "model": groq_model,
-        "model_display": "LLaMA 3.1 (llama-3.1-70b-versatile)",
+        "model_display": "Qwen 3 (qwen/qwen3-32b)",
         "guidelines": guideline_load_status,
         "timestamp": datetime.utcnow().isoformat(),
     }
@@ -1263,7 +1263,7 @@ async def admin_dashboard():
       {db_badge}
     </div>
     <div class="status-row">
-      <span class="status-label">🤖 LLaMA 3.1 via Groq</span>
+      <span class="status-label">🤖 Qwen 3 via Groq</span>
       {ai_badge}
     </div>
     <div class="status-row">
@@ -1327,7 +1327,7 @@ async def admin_dashboard():
 </div>
 
 <div class="footer">
-  © 2026 Elements Interactive · IntelliHealth AI Clinical System · Powered by LLaMA 3.1 via Groq
+  © 2026 Elements Interactive · IntelliHealth AI Clinical System · Powered by Qwen 3 via Groq
 </div>
 </body>
 </html>"""
