@@ -168,24 +168,36 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
       const response = await axios.get(`${API_URL}/api/doctor/patients`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setPatients(response.data);
+      const data = response.data;
+      const resolvedPatients = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.patients)
+          ? data.patients
+          : [];
+      if (!Array.isArray(resolvedPatients)) {
+        console.error('Unexpected patients response shape:', data);
+      }
+      setPatients(resolvedPatients);
       setShowPatientList(true);
       setSearchQuery('');
     } catch (err) {
       console.error('Failed to load patients:', err);
+      setPatients([]);
     }
   };
 
   // Filter by name, patid, or phone
-  const filteredPatients = patients.filter(patient => {
-    const q = searchQuery.toLowerCase();
-    if (!q) return true;
-    return (
-      (patient.pname && patient.pname.toLowerCase().includes(q)) ||
-      (patient.patid && patient.patid.toLowerCase().includes(q)) ||
-      (patient.phone_number && patient.phone_number.includes(q))
-    );
-  });
+  const filteredPatients = Array.isArray(patients)
+    ? patients.filter(patient => {
+      const q = searchQuery.toLowerCase();
+      if (!q) return true;
+      return (
+        (patient.pname && patient.pname.toLowerCase().includes(q)) ||
+        (patient.patid && patient.patid.toLowerCase().includes(q)) ||
+        (patient.phone_number && patient.phone_number.includes(q))
+      );
+    })
+    : [];
 
   const selectPatient = (patient) => {
     setShowPatientList(false);
@@ -249,7 +261,7 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel }) => {
       };
       const token = sessionStorage.getItem('authToken');
       console.log('[AddPatient] Sending payload:', JSON.stringify(payload, null, 2));
-      const response = await axios.post(`${API_URL}/api/doctor/patient/add`, payload, {
+      const response = await axios.post(`${API_URL}/api/doctor/patients`, payload, {
         headers: { Authorization: `Bearer ${token}` }
       });
       console.log('[AddPatient] Response:', response.data);

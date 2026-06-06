@@ -162,9 +162,24 @@ const IntelliHealthInterface = ({ patientData, onBack, onLogout }) => {
       } else {
         clearInterval(streamInterval);
         setIsStreaming(false);
-        setChatHistory(prev => prev.map(chat =>
-          chat.id === chatId ? { ...chat, isStreaming: false } : chat
-        ));
+        setChatHistory(prev => {
+          const updated = prev.map(chat =>
+            chat.id === chatId ? { ...chat, isStreaming: false } : chat
+          );
+          const messagesToSave = updated
+            .filter(item => item.response && !item.isLoading)
+            .map(item => ({
+              query_type: item.queryType || 'Consultation',
+              query: item.query,
+              response: item.response,
+              timestamp: item.timestamp || new Date().toISOString(),
+              has_image: item.hasImage || false,
+              has_pdf: item.hasPdf || false,
+              _session_only: true
+            }));
+          saveSessionHistory(messagesToSave);
+          return updated;
+        });
         if (enableVoiceResponse && speechSynth) {
           const utterance = new SpeechSynthesisUtterance(stripMarkdown(fullText));
           utterance.rate = 0.95; utterance.pitch = 1; utterance.volume = 1;
@@ -208,14 +223,34 @@ const IntelliHealthInterface = ({ patientData, onBack, onLogout }) => {
       has_image: chat.hasImage || false, has_pdf: chat.hasPdf || false, _session_only: true
     }));
 
-  const fetchPatientHistory = async () => {
+  const saveSessionHistory = async (messagesToSave) => {
     try {
+      const patientId = editableData.patid || editableData.caseid?.replace(/^CASE-/, '');
+      if (!patientId || !Array.isArray(messagesToSave) || messagesToSave.length === 0) return;
       const token = sessionStorage.getItem('authToken');
-      const response = await axios.get(`${API_URL}/api/patient-history`, {
-        params: { caseid: editableData.caseid, patid: editableData.patid },
+      await axios.post(`${API_URL}/api/session/${patientId}/save`, { messages: messagesToSave }, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setPatientHistory(response.data.success ? (response.data.history || []) : buildSessionHistory());
+    } catch (err) {
+      console.error('Failed to save session history:', err);
+    }
+  };
+
+  const fetchPatientHistory = async () => {
+    const patientId = editableData.patid || editableData.caseid?.replace(/^CASE-/, '');
+    if (!patientId) {
+      setPatientHistory(buildSessionHistory());
+      setShowHistoryModal(true);
+      return;
+    }
+
+    try {
+      const token = sessionStorage.getItem('authToken');
+      const response = await axios.get(`${API_URL}/api/session/${patientId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const messages = response.data?.success ? (response.data.messages || []) : [];
+      setPatientHistory(messages.length > 0 ? messages : buildSessionHistory());
     } catch {
       setPatientHistory(buildSessionHistory());
     }
