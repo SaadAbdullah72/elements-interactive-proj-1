@@ -426,7 +426,8 @@ const IntelliHealthInterface = ({ patientData, onBack, onLogout }) => {
         allergies: editableData.allergies, image_data: uploadedImage,
         image_name: uploadedImageName, pdf_text: uploadedPdfText, pdf_name: uploadedPdfName,
         patient_email: editableData.patient_email || null,
-        doctor_name: sessionStorage.getItem('doctorName') || 'Your Healthcare Provider'
+        doctor_name: sessionStorage.getItem('doctorName') || 'Your Healthcare Provider',
+        doctor_id: sessionStorage.getItem('doctorId') || null,
       }, { headers: { Authorization: `Bearer ${token}` } });
 
       if (response.data.success) {

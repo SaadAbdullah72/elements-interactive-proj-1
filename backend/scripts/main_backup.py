@@ -128,6 +128,23 @@ class ChatbotRequest(BaseModel):
     symptoms: str
     patient_name: Optional[str] = None
 
+
+def _is_medical_query(text: str) -> bool:
+    if not text or not text.strip():
+        return False
+
+    normalized = text.lower()
+    medical_terms = [
+        "symptom", "symptoms", "pain", "fever", "cough", "headache", "infection",
+        "diagnosis", "treatment", "medicine", "medication", "prescription", "dose",
+        "blood pressure", "bp", "heart", "cardiac", "diabetes", "cancer", "asthma",
+        "migraine", "nausea", "vomit", "vomiting", "rash", "allergy", "allergies",
+        "surgery", "clinic", "hospital", "doctor", "medical", "illness", "disease",
+        "viral", "bacterial", "lab", "test", "health", "condition", "injury",
+        "anemia", "hypertension", "cholesterol", "stroke", "infection" 
+    ]
+    return any(term in normalized for term in medical_terms)
+
 # -------------------------
 # Agents
 # -------------------------
@@ -2531,6 +2548,18 @@ def get_medical_analytics(user_email: str, range: str = "24h"):
 async def chatbot_analyze(request: ChatbotRequest):
     """AI-powered symptom analysis chatbot with doctor-like consultation."""
     try:
+        if not _is_medical_query(request.symptoms):
+            return {
+                "response": "Sorry, I am not programmed for this. Please ask a medical related question.",
+                "severity": "LOW",
+                "recommendations": [],
+                "explanation": "",
+                "body_explanation": "",
+                "next_steps": "Please ask a medical question related to symptoms, diagnosis, treatment, or health concerns.",
+                "red_flags": [],
+                "possible_causes": []
+            }
+
         if not groq_client:
             return {
                 "response": "Thank you for sharing your symptoms. I'm here to help you understand what might be happening and guide you on the best next steps. Based on what you've described, I recommend consulting a healthcare professional for proper evaluation and personalized care.",

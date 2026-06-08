@@ -7,6 +7,7 @@ import os
 import io
 import asyncio
 import base64
+import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Optional, Dict, Any, List
@@ -22,6 +23,7 @@ from fastapi import (
     Request,
 )
 from fastapi.middleware.cors import CORSMiddleware
+import jwt
 from fastapi.responses import HTMLResponse, StreamingResponse
 from pymongo import MongoClient
 from pydantic import BaseModel
@@ -159,6 +161,7 @@ def _call_groq_with_model(messages, max_tokens=1536, temperature=0.3):
 # ── MongoDB ────────────────────────────────────────────────────────────────────
 mongodburl = os.getenv("MONGODB_URL", "mongodb://localhost:27017/")
 db_name = os.getenv("MONGODB_DBFULL_DB", "dbfull")
+chat_sessions_collection = None
 try:
     _mongo = MongoClient(mongodburl, serverSelectionTimeoutMS=5000)
     _mongo.admin.command("ping")
@@ -169,6 +172,8 @@ try:
     learning_journal_collection = _db["learning_journal"]
     learning_journal_collection.create_index([("disease", 1), ("query_type", 1)])
     learning_journal_collection.create_index([("rating", 1)])
+    chat_sessions_collection = _db["chat_sessions"]
+    chat_sessions_collection.create_index([("session_id", 1)], unique=True)
     print(f"[DB] Connected to {db_name}")
 except Exception as e:
     print(f"[DB] Connection failed: {e}")
@@ -178,6 +183,7 @@ except Exception as e:
     analyses_collection = None
     email_notifications_collection = None
     learning_journal_collection = None
+    chat_sessions_collection = None
 
 # ── Routers ────────────────────────────────────────────────────────────────────
 app.include_router(doctor_router)
@@ -215,6 +221,8 @@ class ClinicalQuery(BaseModel):
     pdf_name: Optional[str] = ""
     patient_email: Optional[str] = ""
     doctor_name: Optional[str] = ""
+    session_id: Optional[str] = None
+    chat_history: Optional[List[Dict[str, Any]]] = None
     use_ada_mode: Optional[bool] = False
 
 
@@ -226,6 +234,111 @@ class ExportReportRequest(BaseModel):
     hospital: Optional[str] = ""
     chat_history: Optional[List[Dict[str, Any]]] = []
     export_date: Optional[str] = ""
+
+
+def _is_medical_query(text: Optional[str]) -> bool:
+    if not text or not text.strip():
+        return False
+
+    normalized = text.lower()
+
+    non_medical_markers = [
+        "weather", "stock", "stocks", "market", "movie", "movies", "music", "song",
+        "sports", "football", "soccer", "basketball", "tennis", "travel", "flight",
+        "restaurant", "recipe", "cook", "cooking", "game", "gaming", "programming",
+        "code", "javascript", "python", "computer", "email", "text message", "sms",
+        "news", "politics", "election", "government", "economy", "finance", "bank",
+        "math", "history", "geography", "language", "book", "novel", "story", "poem",
+        "joke", "funny", "meme", "how are you", "what is your name", "who are you",
+        "tell me about", "write a", "create a", "describe a", "teach me", "translate",
+    ]
+
+    if any(marker in normalized for marker in non_medical_markers):
+        return False
+
+    medical_intent_clues = [
+        "health", "doctor", "clinic", "medical", "medicine", "medication",
+        "symptom", "symptoms", "treatment", "diagnosis", "pain", "illness",
+        "condition", "disease", "therapy", "consultation", "vaccine",
+        "appointment", "nausea", "fever", "cough", "headache", "infection",
+    ]
+
+    if any(clue in normalized for clue in medical_intent_clues):
+        return True
+
+    generic_health_questions = [
+        "should i", "what should i do", "what can i do", "help me", "i have",
+        "i'm feeling", "i am feeling", "my", "me", "feeling unwell", "feeling sick",
+        "is it normal", "should i see", "need advice", "concerned about", "worried about",
+    ]
+
+    if any(clue in normalized for clue in generic_health_questions):
+        return True
+
+    # If the query is not obviously non-medical, assume it is medical or health-related.
+    return True
+
+
+def _ensure_session_id(session_id: Optional[str]) -> str:
+    if session_id and session_id.strip():
+        return session_id.strip()
+    return str(uuid.uuid4())
+
+
+def _normalize_chat_history(raw_history: Optional[List[Dict[str, Any]]]) -> List[Dict[str, str]]:
+    normalized: List[Dict[str, str]] = []
+    if not raw_history:
+        return normalized
+    for entry in raw_history:
+        if not isinstance(entry, dict):
+            continue
+        role = entry.get("role", "user")
+        if role not in ("user", "assistant"):
+            role = "assistant" if entry.get("response") else "user"
+        content = entry.get("content") or entry.get("query") or entry.get("response") or ""
+        if content:
+            normalized.append({"role": role, "content": str(content)})
+    return normalized
+
+
+def _trim_chat_history(history: List[Dict[str, str]], max_messages: int = 12) -> List[Dict[str, str]]:
+    return history[-max_messages:]
+
+
+def _reconcile_history(stored: List[Dict[str, str]], incoming: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    if not stored:
+        return incoming
+    if not incoming:
+        return stored
+    return incoming if len(incoming) >= len(stored) else stored
+
+
+def _load_chat_session(session_id: str) -> Optional[List[Dict[str, str]]]:
+    if not session_id or not _db or not chat_sessions_collection:
+        return None
+    doc = chat_sessions_collection.find_one({"session_id": session_id})
+    if not doc:
+        return None
+    return doc.get("history", [])
+
+
+def _save_chat_session(session_id: str, history: List[Dict[str, str]], metadata: Optional[Dict[str, Any]] = None) -> None:
+    if not session_id or not chat_sessions_collection:
+        return
+    timestamp = datetime.utcnow().isoformat()
+    chat_sessions_collection.update_one(
+        {"session_id": session_id},
+        {
+            "$set": {
+                "session_id": session_id,
+                "updated_at": timestamp,
+                "metadata": metadata or {},
+                "history": history,
+            },
+            "$setOnInsert": {"created_at": timestamp},
+        },
+        upsert=True,
+    )
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -348,6 +461,27 @@ def _save_interaction(query_data, response_content: str, ada_refs: list, model_u
         )
     except Exception as e:
         print(f"[Learning] Save failed: {e}")
+
+
+def _decode_jwt_token(token: str) -> Optional[Dict[str, Any]]:
+    try:
+        return jwt.decode(token, os.getenv("JWT_SECRET_KEY", "change-in-production"), algorithms=["HS256"])
+    except Exception:
+        return None
+
+
+def _apply_doctor_identity_from_request(query_data: ClinicalQuery, request: Request) -> None:
+    auth_header = request.headers.get("authorization") or request.headers.get("Authorization")
+    if not auth_header or not auth_header.lower().startswith("bearer "):
+        return
+    token = auth_header.split(" ", 1)[1].strip()
+    payload = _decode_jwt_token(token)
+    if not payload:
+        return
+    if not query_data.doctor_name and payload.get("name"):
+        query_data.doctor_name = payload.get("name")
+    if not query_data.doctor_id and payload.get("doctor_id"):
+        query_data.doctor_id = payload.get("doctor_id")
 
 
 def _extract_key_recs(text: str) -> str:
@@ -540,8 +674,23 @@ Author/Organization (Year). Title. Journal. Volume(Issue):Pages. DOI.
     else:
         user_message = f"Perform a complete clinical analysis for this patient with {disease}, applying structured reasoning and ADA 2026 evidence-based guidelines."
 
+    session_id = None
+    history_messages: List[Dict[str, str]] = []
+    if query_data.session_id or query_data.chat_history:
+        session_id = _ensure_session_id(query_data.session_id)
+        incoming_history = _normalize_chat_history(query_data.chat_history)
+        stored_history = _load_chat_session(session_id) if query_data.session_id else []
+        session_history = _reconcile_history(stored_history, incoming_history)
+        session_history = _trim_chat_history(session_history, max_messages=12)
+        history_messages = [
+            {"role": h["role"], "content": h["content"]}
+            for h in session_history
+            if h.get("role") and h.get("content")
+        ]
+
     messages = [
         {"role": "system", "content": system_prompt},
+        *history_messages,
         {"role": "user", "content": user_message},
     ]
 
@@ -553,13 +702,32 @@ Author/Organization (Year). Title. Journal. Volume(Issue):Pages. DOI.
         ada_refs = _extract_ada_refs(response_content)
         _save_interaction(query_data, response_content, ada_refs, used_model)
 
-        return {
+        if session_id:
+            save_history = history_messages.copy()
+            if not save_history or save_history[-1].get("role") != "user" or save_history[-1].get("content") != user_message:
+                save_history.append({"role": "user", "content": user_message})
+            save_history.append({"role": "assistant", "content": response_content})
+            _save_chat_session(
+                session_id,
+                save_history,
+                metadata={
+                    "patid": query_data.patid,
+                    "pname": query_data.pname,
+                    "doctor_name": query_data.doctor_name,
+                    "disease": query_data.disease,
+                },
+            )
+
+        result = {
             "success": True,
             "content": response_content,
             "usage": guideline_usage,
             "ada_refs_found": ada_refs,
             "model": used_model,
         }
+        if session_id:
+            result["session_id"] = session_id
+        return result
     except Exception as e:
         print(f"[AI] Groq API error: {e}")
         return {
@@ -815,7 +983,7 @@ async def model_info():
 
 @api_router.post("/clinical-analysis")
 async def get_clinical_analysis(
-    query_data: ClinicalQuery, background_tasks: BackgroundTasks
+    query_data: ClinicalQuery, background_tasks: BackgroundTasks, request: Request
 ):
     if not groq_client:
         raise HTTPException(
@@ -826,6 +994,16 @@ async def get_clinical_analysis(
             status_code=503,
             detail="ADA Guidelines are still loading. Please try again in a moment.",
         )
+
+    _apply_doctor_identity_from_request(query_data, request)
+    if query_data.custom_query and query_data.custom_query.strip():
+        if not _is_medical_query(query_data.custom_query):
+            return {
+                "success": True,
+                "content": "Sorry, I am not programmed for this. Please ask some medical related question.",
+                "usage": {},
+                "ada_refs_found": [],
+            }
 
     result = generate_advanced_ai_response(query_data)
 
@@ -844,9 +1022,44 @@ async def get_clinical_analysis(
     return result
 
 
+@api_router.post("/session")
+async def create_session():
+    session_id = _ensure_session_id(None)
+    _save_chat_session(session_id, [], {})
+    return {"success": True, "session_id": session_id}
+
+
+@api_router.get("/session/{session_id}")
+async def load_session(session_id: str):
+    session_history = _load_chat_session(session_id)
+    if session_history is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return {"success": True, "session_id": session_id, "history": session_history}
+
+
+@api_router.post("/session/{session_id}/save")
+async def save_session(session_id: str, body: Dict[str, Any]):
+    history = body.get("history")
+    metadata = body.get("metadata", {})
+    if history is None or not isinstance(history, list):
+        raise HTTPException(status_code=400, detail="Session history must be provided as a list")
+    normalized_history = _normalize_chat_history(history)
+    _save_chat_session(session_id, normalized_history, metadata)
+    return {"success": True, "session_id": session_id}
+
+
 @api_router.post("/export-report")
-async def export_report(req: ExportReportRequest):
+async def export_report(req: ExportReportRequest, request: Request):
     """Generate and download a professional PDF patient consultation report."""
+    auth_header = request.headers.get("authorization") or request.headers.get("Authorization")
+    if auth_header and auth_header.lower().startswith("bearer "):
+        token = auth_header.split(" ", 1)[1].strip()
+        payload = _decode_jwt_token(token)
+        if payload:
+            if not req.doctor_name and payload.get("name"):
+                req.doctor_name = payload.get("name")
+            if not req.doctor_id and payload.get("doctor_id"):
+                req.doctor_id = payload.get("doctor_id")
     try:
         pdf_bytes = generate_report_pdf(req)
         patient_name = req.patient.get("pname", "Patient").replace(" ", "_")

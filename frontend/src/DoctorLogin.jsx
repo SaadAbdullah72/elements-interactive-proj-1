@@ -46,6 +46,7 @@ const DoctorLogin = ({ onLoginSuccess, onNavigate }) => {
       sessionStorage.setItem('userRole', 'doctor');
       sessionStorage.setItem('doctorName', response.data.doctor.name);
       sessionStorage.setItem('doctorEmail', response.data.doctor.email);
+      sessionStorage.setItem('doctorId', response.data.doctor.doctor_id || '');
       setSuccess('✓ Login successful! Redirecting...');
       setTimeout(() => onLoginSuccess(response.data.access_token, response.data.doctor), 1500);
     } catch (err) {
