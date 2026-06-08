@@ -45,6 +45,9 @@ function App() {
     if (hashPath.includes('clinical-studies')) {
       return 'clinical-studies';
     }
+    if (hashPath.includes('product-info')) {
+      return 'product-info';
+    }
 
     const path = window.location.pathname.replace(/\/+$/, '').toLowerCase();
     if (path.includes('/signup')) {
@@ -71,6 +74,9 @@ function App() {
     if (path.includes('/clinical-studies')) {
       return 'clinical-studies';
     }
+    if (path.includes('/product-info')) {
+      return 'product-info';
+    }
     return 'login';
   };
 
@@ -85,7 +91,7 @@ function App() {
   const [prevScreen, setPrevScreen] = useState('login');
 
   const navigateToLegal = (screen) => {
-    if (!['privacy', 'terms', 'helpline', 'guidelines', 'clinical-studies'].includes(currentScreen)) {
+    if (!['privacy', 'terms', 'helpline', 'guidelines', 'clinical-studies', 'product-info'].includes(currentScreen)) {
       setPrevScreen(currentScreen);
     }
     setCurrentScreen(screen);
@@ -140,6 +146,9 @@ function App() {
       case 'clinical-studies':
         title = 'Clinical Studies | DiabAssist';
         break;
+      case 'product-info':
+        title = 'Product Info | DiabAssist';
+        break;
       default:
         title = 'DiabAssist';
     }
@@ -186,7 +195,7 @@ function App() {
       sessionStorage.removeItem('doctorEmail');
     }
 
-    if (routeScreen === 'privacy' || routeScreen === 'terms' || routeScreen === 'helpline' || routeScreen === 'guidelines' || routeScreen === 'clinical-studies') {
+    if (routeScreen === 'privacy' || routeScreen === 'terms' || routeScreen === 'helpline' || routeScreen === 'guidelines' || routeScreen === 'clinical-studies' || routeScreen === 'product-info') {
       setCurrentScreen(routeScreen);
     } else {
       setCurrentScreen('login');
@@ -244,6 +253,7 @@ function App() {
     else if (currentScreen === 'helpline') targetHash = '#/helpline';
     else if (currentScreen === 'guidelines') targetHash = '#/guidelines';
     else if (currentScreen === 'clinical-studies') targetHash = '#/clinical-studies';
+    else if (currentScreen === 'product-info') targetHash = '#/product-info';
     else if (currentScreen === 'login') targetHash = '#/login';
 
     const currentHash = window.location.hash || '#/';
@@ -332,6 +342,9 @@ function App() {
 
         {currentScreen === 'clinical-studies' && (
           <LegalPage page="clinical-studies" onBack={() => setCurrentScreen(prevScreen)} onNavigate={navigateToLegal} />
+        )}
+        {currentScreen === 'product-info' && (
+          <LegalPage page="product-info" onBack={() => setCurrentScreen(prevScreen)} onNavigate={navigateToLegal} />
         )}
       </div>
 

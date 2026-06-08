@@ -784,6 +784,9 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel, onNavigate }
                 <button onClick={() => onNavigate?.('clinical-studies')} className="px-8 py-2.5 bg-white border border-gray-200 rounded-xl font-bold text-gray-800 shadow-sm hover:bg-gray-50 text-sm">
                   Clinical Studies
                 </button>
+                <button onClick={() => onNavigate?.('product-info')} className="px-8 py-2.5 bg-white border border-gray-200 rounded-xl font-bold text-gray-800 shadow-sm hover:bg-gray-50 text-sm">
+                  Product Info
+                </button>
               </div>
             </div>
 

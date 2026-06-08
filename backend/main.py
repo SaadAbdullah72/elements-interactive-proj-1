@@ -116,10 +116,19 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=False,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.middleware("http")
+async def enforce_cors_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET,POST,PUT,DELETE,OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Authorization,Content-Type,Accept,Origin,User-Agent"
+    response.headers["Access-Control-Max-Age"] = "86400"
+    return response
 
 # ── Groq client ────────────────────────────────────────────────────────────────
 groq_api_key = os.getenv("GROQ_API_KEY", "")
@@ -221,6 +230,7 @@ class ClinicalQuery(BaseModel):
     pdf_name: Optional[str] = ""
     patient_email: Optional[str] = ""
     doctor_name: Optional[str] = ""
+    doctor_id: Optional[str] = ""
     session_id: Optional[str] = None
     chat_history: Optional[List[Dict[str, Any]]] = None
     use_ada_mode: Optional[bool] = False
@@ -566,11 +576,27 @@ def generate_advanced_ai_response(query_data: ClinicalQuery) -> Dict[str, Any]:
     # ── Learning journal context (similar validated past cases) ───────────────
     past_cases_ctx = _retrieve_similar_cases(disease, query_type)
 
+    diabassist_directive = """You are DiabAssist, a specialized clinical AI assistant for healthcare professionals.
+You will only answer questions about the current patient, their medical condition, diagnostics, medications, risk factors, treatment options, and clinical care.
+Always interpret the physician's query as a patient-specific clinical request.
+Adapt your response style to the precise question: provide concise, focused answers when the query is brief or asks for a summary, and provide clear, thorough explanations when the query asks for understanding or detail.
+Avoid returning the same canned response structure for every query; tailor the content, tone, and length to the medical need and the form of the question.
+Keep responses within a safe token limit by using clear, direct language and avoiding unnecessary repetition.
+Focus strictly on the patient's health status, diabetes management, and directly relevant medical reasoning.
+Do not answer questions about geography, history, politics, entertainment, sports, technology, programming, mathematics, current events, general knowledge, personal opinions, or any topic unrelated to this patient's healthcare.
+If the query is NOT related to the current patient's healthcare, respond exactly:
+"I am not programmed for this. Please ask a health-related question about the patient."
+"""
+
     # ── Build system prompt ───────────────────────────────────────────────────
     if conv_type == "general" or query_type == "Generic":
-        system_prompt = f"""You are IntelliHealth, an AI clinical reasoning system presenting as Gemma, supporting Dr. {doctor_name}.
+        system_prompt = f"""{diabassist_directive}
+
+You are IntelliHealth, an AI clinical reasoning system presenting as Gemma, supporting Dr. {doctor_name}.
 You operate as a continuously learning, evidence-driven assistant that applies structured clinical reasoning and ADA 2026 guidelines.
 Use prior validated clinical interactions and rated feedback to refine your reasoning and improve future recommendations.
+Always adapt your response format and depth to the specific clinical query; do not return the same type of response for every question.
+Keep answers concise when the query warrants brevity, and expand with proper explanation when the query demands it.
 
 {patient_ctx}
 {uploaded_ctx}
@@ -591,10 +617,14 @@ RESPONSE REQUIREMENTS:
 {_ADA_CITATION_RULES}"""
 
     else:
-        system_prompt = f"""You are IntelliHealth, a continuously learning AI Clinical Decision Support System presenting as Gemma, assisting Dr. {doctor_name}.
+        system_prompt = f"""{diabassist_directive}
+
+You are IntelliHealth, a continuously learning AI Clinical Decision Support System presenting as Gemma, assisting Dr. {doctor_name}.
 
 CORE MISSION: Apply expert-level clinical reasoning to generate evidence-graded, reference-backed recommendations that improve with each interaction.
 Use prior validated clinical interactions and rated feedback to refine your reasoning and improve future recommendations.
+Always adapt the response style to the physician's query: respond succinctly for focused requests, and provide more complete explanations for questions requiring detail.
+Keep the answer within safe token limits and avoid repeating the same template for every medical query.
 
 ANALYSIS DIRECTIVE: {analysis_focus}
 

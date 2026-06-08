@@ -161,6 +161,34 @@ const LegalPage = ({ page, onBack, onNavigate }) => {
         </section>
       </div>
     );
+  } else if (page === 'product-info') {
+    title = 'Product Information';
+    content = (
+      <div className="legal-content-wrapper">
+        <section className="legal-section">
+          <h3>About DiabAssist — Product Overview</h3>
+          <p>
+            This placeholder page provides product information for the clinic-facing DiabAssist application. Replace this content with the official product details, features, and deployment notes.
+          </p>
+        </section>
+
+        <section className="legal-section">
+          <h3>Key Features (Dummy Data)</h3>
+          <ul>
+            <li>AI-assisted clinical decision support</li>
+            <li>Guideline-aligned recommendations</li>
+            <li>Session persistence and PDF export</li>
+          </ul>
+        </section>
+
+        <section className="legal-section">
+          <h3>Next Steps</h3>
+          <p>
+            Replace this placeholder with the official product brochure, integration instructions, or marketing copy as required.
+          </p>
+        </section>
+      </div>
+    );
   } else if (page === 'helpline') {
     title = 'Helpline & Support';
     content = (
