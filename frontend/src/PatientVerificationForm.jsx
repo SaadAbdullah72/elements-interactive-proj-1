@@ -435,33 +435,26 @@ const PatientVerificationForm = ({ onVerificationSuccess, onCancel, onNavigate }
                       </div>
                     ) : (
                       <div className="divide-y divide-gray-50">
-                        {filteredPatients.map(patient => {
-                          const isRestricted = patient.is_owned_patient === false;
-                          const displayName = patient.pname || (isRestricted ? 'Confidential patient' : 'Unknown patient');
-
-                          return (
-                            <button
-                              key={patient.patid}
-                              onClick={() => selectPatient(patient)}
-                              className="w-full px-6 py-3 hover:bg-purple-50 transition-colors text-left flex justify-between items-center group"
-                            >
-                              <div>
-                                <p className="font-semibold text-gray-800 text-sm group-hover:text-purple-700">{displayName}</p>
-                                <p className="text-xs text-gray-400 mt-0.5">
-                                  {patient.patid} • {patient.age || '—'} yrs • {patient.gender || '—'}
-                                  {isRestricted ? (
-                                    <span className="ml-2 text-amber-500">Restricted record</span>
-                                  ) : patient.phone_number ? (
-                                    <span className="ml-2 text-blue-400">
-                                      <FiPhone className="inline" size={10} /> {patient.phone_number}
-                                    </span>
-                                  ) : null}
-                                </p>
-                              </div>
-                              <FiArrowRight className="text-gray-300 group-hover:text-purple-500 transition-colors" size={14} />
-                            </button>
-                          );
-                        })}
+                        {filteredPatients.map(patient => (
+                          <button
+                            key={patient.patid}
+                            onClick={() => selectPatient(patient)}
+                            className="w-full px-6 py-3 hover:bg-purple-50 transition-colors text-left flex justify-between items-center group"
+                          >
+                            <div>
+                              <p className="font-semibold text-gray-800 text-sm group-hover:text-purple-700">{patient.pname}</p>
+                              <p className="text-xs text-gray-400 mt-0.5">
+                                {patient.patid} • {patient.age} yrs • {patient.gender}
+                                {patient.phone_number && (
+                                  <span className="ml-2 text-blue-400">
+                                    <FiPhone className="inline" size={10} /> {patient.phone_number}
+                                  </span>
+                                )}
+                              </p>
+                            </div>
+                            <FiArrowRight className="text-gray-300 group-hover:text-purple-500 transition-colors" size={14} />
+                          </button>
+                        ))}
                       </div>
                     )}
                   </div>
