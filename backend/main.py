@@ -131,7 +131,17 @@ async def enforce_cors_headers(request: Request, call_next):
     return response
 
 # ── Groq client ────────────────────────────────────────────────────────────────
-groq_api_key = os.getenv("GROQ_API_KEY", "")
+
+def _resolve_groq_api_key() -> str:
+    """Prefer the real runtime environment variable, with a couple of common fallbacks."""
+    for name in ("GROQ_API_KEY", "GROQ_KEY", "GROQ_API_TOKEN", "GROQ_TOKEN"):
+        value = os.getenv(name)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
+
+
+groq_api_key = _resolve_groq_api_key()
 groq_client = Groq(api_key=groq_api_key) if groq_api_key else None
 # Underlying engine: llama-3.1-8b-instant; assistant persona: Gemma clinical reasoning model.
 groq_model_primary = "llama-3.1-8b-instant"
@@ -160,6 +170,10 @@ def _call_groq_with_model(messages, max_tokens=1536, temperature=0.3):
             err_text = str(e).lower()
             print(f"[AI] Model {model} failed: {e}")
             last_error = e
+            if "invalid_api_key" in err_text or "authenticationerror" in err_text:
+                raise RuntimeError(
+                    "Groq rejected the API key (401 invalid_api_key). Update the live GROQ_API_KEY secret in your hosting provider and redeploy."
+                ) from e
             if any(x in err_text for x in ["rate limit", "rate_limit_exceeded", "tokens per day", "quota", "model_not_found", "does not exist"]):
                 print(f"[AI] Model {model} unavailable or rate-limited, trying next fallback model.")
                 continue
@@ -494,6 +508,39 @@ def _apply_doctor_identity_from_request(query_data: ClinicalQuery, request: Requ
         query_data.doctor_id = payload.get("doctor_id")
 
 
+def _patient_belongs_to_doctor(patient: Optional[Dict[str, Any]], doctor_id: Optional[str], doctor_name: Optional[str] = None) -> bool:
+    if not isinstance(patient, dict):
+        return False
+
+    owner_id = patient.get("added_by_doctor_id") or patient.get("doctor_id") or ""
+    if isinstance(owner_id, str) and owner_id.strip() and doctor_id:
+        if owner_id.strip() == str(doctor_id).strip():
+            return True
+
+    owner_name = patient.get("added_by_doctor") or patient.get("doctor_name") or ""
+    if isinstance(owner_name, str) and owner_name.strip() and doctor_name:
+        return owner_name.strip().casefold() == str(doctor_name).strip().casefold()
+
+    return False
+
+
+def _require_patient_scope(query_data: ClinicalQuery, request: Request) -> None:
+    if not patients_collection or not query_data.patid:
+        return
+
+    _apply_doctor_identity_from_request(query_data, request)
+
+    patient = patients_collection.find_one({"patid": query_data.patid}, {"_id": 0})
+    if not patient:
+        return
+
+    if not _patient_belongs_to_doctor(patient, query_data.doctor_id, query_data.doctor_name):
+        raise HTTPException(
+            status_code=403,
+            detail="This patient record is outside your scope. I can only assist with patients you entered.",
+        )
+
+
 def _extract_key_recs(text: str) -> str:
     """Extract a compact summary of management recommendations from AI response."""
     lines = text.split("\n")
@@ -760,9 +807,15 @@ Author/Organization (Year). Title. Journal. Volume(Issue):Pages. DOI.
         return result
     except Exception as e:
         print(f"[AI] Groq API error: {e}")
+        message = str(e)
+        if "invalid_api_key" in message.lower() or "401" in message:
+            message = (
+                "Groq rejected the live API key (401 invalid_api_key). "
+                "Update the GROQ_API_KEY secret in your hosting provider and redeploy."
+            )
         return {
             "success": False,
-            "error": f"AI response generation failed: {e}",
+            "error": f"AI response generation failed: {message}",
             "content": "",
         }
 
@@ -1017,7 +1070,8 @@ async def get_clinical_analysis(
 ):
     if not groq_client:
         raise HTTPException(
-            status_code=503, detail="AI service not configured. Check GROQ_API_KEY."
+            status_code=503,
+            detail="AI service is not configured. Set a valid GROQ_API_KEY in the live environment and redeploy.",
         )
     if not guideline_load_status["loaded"] and query_data.use_ada_mode:
         raise HTTPException(
@@ -1026,6 +1080,7 @@ async def get_clinical_analysis(
         )
 
     _apply_doctor_identity_from_request(query_data, request)
+    _require_patient_scope(query_data, request)
     if query_data.custom_query and query_data.custom_query.strip():
         if not _is_medical_query(query_data.custom_query):
             return {
@@ -1091,6 +1146,21 @@ async def export_report(req: ExportReportRequest, request: Request):
             if not req.doctor_id and payload.get("doctor_id"):
                 req.doctor_id = payload.get("doctor_id")
     try:
+        doctor_id = None
+        doctor_name = None
+        if auth_header and auth_header.lower().startswith("bearer "):
+            token = auth_header.split(" ", 1)[1].strip()
+            payload = _decode_jwt_token(token)
+            if payload:
+                doctor_id = payload.get("doctor_id")
+                doctor_name = payload.get("name")
+
+        patid = req.patient.get("patid") if isinstance(req.patient, dict) else None
+        if patid and patients_collection:
+            patient_doc = patients_collection.find_one({"patid": patid}, {"_id": 0})
+            if not patient_doc or not _patient_belongs_to_doctor(patient_doc, doctor_id, doctor_name):
+                raise HTTPException(status_code=403, detail="This patient record is outside your scope and cannot be exported.")
+
         pdf_bytes = generate_report_pdf(req)
         patient_name = req.patient.get("pname", "Patient").replace(" ", "_")
         date_str = datetime.utcnow().strftime("%Y%m%d")

@@ -456,6 +456,29 @@ async def get_doctor_me(credentials: HTTPAuthorizationCredentials = Depends(secu
 
 # ── Patient management ─────────────────────────────────────────────────────────
 
+
+def _mask_patient_for_doctor(patient: Dict[str, Any], doctor_id: Optional[str]) -> Dict[str, Any]:
+    """Mask personal identifiers for patients that belong to another doctor."""
+    if not isinstance(patient, dict):
+        return patient
+
+    masked = dict(patient)
+    owner_id = str(patient.get("added_by_doctor_id") or patient.get("doctor_id") or "").strip()
+    is_owned_patient = bool(doctor_id and owner_id and owner_id == str(doctor_id).strip())
+
+    if not is_owned_patient:
+        masked["pname"] = ""
+        masked["phone_number"] = ""
+        masked["patient_email"] = ""
+        masked["is_owned_patient"] = False
+        masked["privacy_note"] = "Restricted patient record"
+    else:
+        masked["is_owned_patient"] = True
+        masked["privacy_note"] = ""
+
+    return masked
+
+
 def _generate_patid() -> str:
     """Generate a unique 8-char patient ID."""
     import uuid
@@ -467,21 +490,26 @@ async def list_patients(
     search: Optional[str] = Query(None),
     credentials: HTTPAuthorizationCredentials = Depends(security),
 ):
-    get_doctor_from_token(credentials)
+    payload = get_doctor_from_token(credentials)
     if patients_collection is None:
         raise HTTPException(status_code=503, detail="Database unavailable")
 
+    doctor_id = payload.get("doctor_id")
+
+    search_terms = [
+        {"pname": {"$regex": search, "$options": "i"}},
+        {"patid": {"$regex": search, "$options": "i"}},
+        {"phone_number": {"$regex": search, "$options": "i"}},
+        {"disease": {"$regex": search, "$options": "i"}},
+    ] if search else None
+
     query: Dict[str, Any] = {}
-    if search:
-        query["$or"] = [
-            {"pname": {"$regex": search, "$options": "i"}},
-            {"patid": {"$regex": search, "$options": "i"}},
-            {"phone_number": {"$regex": search, "$options": "i"}},
-            {"disease": {"$regex": search, "$options": "i"}},
-        ]
+    if search_terms:
+        query["$or"] = search_terms
 
     patients = list(patients_collection.find(query, {"_id": 0}).sort("created_at", DESCENDING).limit(200))
-    return {"success": True, "patients": patients, "total": len(patients)}
+    masked_patients = [_mask_patient_for_doctor(patient, doctor_id) for patient in patients]
+    return {"success": True, "patients": masked_patients, "total": len(masked_patients)}
 
 
 @router.post("/doctor/patients")
@@ -531,6 +559,7 @@ async def add_patient(
         "allergies": patient.allergies or "",
         "case_notes": patient.case_notes or "",
         "added_by_doctor": payload.get("name", ""),
+        "added_by_doctor_id": payload.get("doctor_id", ""),
         "created_at": datetime.utcnow().isoformat(),
         "updated_at": datetime.utcnow().isoformat(),
         "caseid": f"CASE-{patid}",
@@ -546,7 +575,7 @@ async def get_patient(
     patid: str,
     credentials: HTTPAuthorizationCredentials = Depends(security),
 ):
-    get_doctor_from_token(credentials)
+    payload = get_doctor_from_token(credentials)
     if patients_collection is None:
         raise HTTPException(status_code=503, detail="Database unavailable")
 
@@ -556,6 +585,10 @@ async def get_patient(
     )
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found")
+    # Enforce ownership: doctors can only access patients they created
+    doctor_id = payload.get("doctor_id")
+    if patient.get("added_by_doctor_id") and doctor_id and patient.get("added_by_doctor_id") != doctor_id:
+        raise HTTPException(status_code=403, detail="Forbidden")
     return {"success": True, "patient": patient}
 
 
@@ -565,7 +598,7 @@ async def update_patient(
     updates: UpdatePatient,
     credentials: HTTPAuthorizationCredentials = Depends(security),
 ):
-    get_doctor_from_token(credentials)
+    payload = get_doctor_from_token(credentials)
     if patients_collection is None:
         raise HTTPException(status_code=503, detail="Database unavailable")
 
@@ -578,9 +611,15 @@ async def update_patient(
         update_data["phone_number"] = normalize_phone(update_data["phone_number"])
 
     update_data["updated_at"] = datetime.utcnow().isoformat()
-    result = patients_collection.update_one({"patid": patid}, {"$set": update_data})
+    # Ensure this doctor owns the patient
+    doctor_id = payload.get("doctor_id")
+    owner_check = {"patid": patid}
+    if doctor_id:
+        owner_check["added_by_doctor_id"] = doctor_id
+
+    result = patients_collection.update_one(owner_check, {"$set": update_data})
     if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Patient not found")
+        raise HTTPException(status_code=404, detail="Patient not found or access denied")
     patient = patients_collection.find_one({"patid": patid}, {"_id": 0})
     return {"success": True, "message": "Patient updated", "patient": patient}
 
@@ -590,12 +629,17 @@ async def delete_patient(
     patid: str,
     credentials: HTTPAuthorizationCredentials = Depends(security),
 ):
-    get_doctor_from_token(credentials)
+    payload = get_doctor_from_token(credentials)
     if patients_collection is None:
         raise HTTPException(status_code=503, detail="Database unavailable")
-    result = patients_collection.delete_one({"patid": patid})
+    # Restrict delete to owner
+    doctor_id = payload.get("doctor_id")
+    delete_query = {"patid": patid}
+    if doctor_id:
+        delete_query["added_by_doctor_id"] = doctor_id
+    result = patients_collection.delete_one(delete_query)
     if result.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="Patient not found")
+        raise HTTPException(status_code=404, detail="Patient not found or access denied")
     return {"success": True, "message": "Patient deleted"}
 
 
