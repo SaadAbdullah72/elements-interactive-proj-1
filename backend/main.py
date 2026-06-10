@@ -289,18 +289,53 @@ groq_client = Groq(api_key=groq_api_key) if groq_api_key else None
 
 groq_model_primary = "llama-3.3-70b-versatile"
 groq_model_fallbacks = [
-    "openai/gpt-oss-120b",
-    "openai/gpt-oss-20b",
     "llama-3.1-8b-instant",
+    "openai/gpt-oss-20b",
 ]
 groq_models = [groq_model_primary] + groq_model_fallbacks
 groq_model = groq_model_primary
 
-# ── FIX 1: max_tokens raised from 1536 → 8192 ────────────────────────────────
-# The old 1536 limit cut off responses mid-section. With 7 mandatory sections
-# plus a full References block, you need at least 4096 tokens; 8192 gives
-# comfortable headroom for complex multi-drug management plans.
-_MAX_RESPONSE_TOKENS = 8192
+# Keep the Groq request comfortably under the platform TPM cap (reported as 8000
+# tokens/request on the on-demand tier). The old 8192-token ceiling can still
+# exceed the limit once the prompt context is included, so we use a conservative
+# output budget, enforce a hard request-size guard, and limit concurrent calls.
+_MAX_RESPONSE_TOKENS = 1800
+_MAX_REQUEST_TOKENS = 5000
+_MAX_CONCURRENT_GROQ_CALLS = 2
+_groq_call_semaphore = threading.Semaphore(_MAX_CONCURRENT_GROQ_CALLS)
+
+
+def _estimate_prompt_tokens(messages: List[Dict[str, Any]]) -> int:
+    """Rough character-to-token estimate for TPM guardrails."""
+    total_chars = 0
+    for msg in messages:
+        content = msg.get("content", "") if isinstance(msg, dict) else ""
+        if isinstance(content, list):
+            text_parts = []
+            for part in content:
+                if isinstance(part, dict):
+                    text_parts.append(part.get("text", ""))
+                else:
+                    text_parts.append(str(part))
+            content = " ".join(text_parts)
+        total_chars += len(str(content))
+    return max(1, total_chars // 4)
+
+
+def _safe_max_tokens(messages: List[Dict[str, Any]], requested_max_tokens: int) -> int:
+    estimated_prompt = _estimate_prompt_tokens(messages)
+    safe_budget = _MAX_REQUEST_TOKENS - estimated_prompt
+    safe_budget = max(512, safe_budget)
+    safe_max_tokens = min(requested_max_tokens, safe_budget)
+
+    if safe_max_tokens < requested_max_tokens:
+        print(
+            "[AI] TPM guardrail reduced max_tokens from "
+            f"{requested_max_tokens} to {safe_max_tokens} "
+            f"(estimated prompt tokens: {estimated_prompt})."
+        )
+
+    return safe_max_tokens
 
 
 def _call_groq_with_model(messages, max_tokens=_MAX_RESPONSE_TOKENS, temperature=0.4):
@@ -310,46 +345,49 @@ def _call_groq_with_model(messages, max_tokens=_MAX_RESPONSE_TOKENS, temperature
       - 0.4 produces more expansive clinical reasoning while remaining factual
     """
     last_error = None
-    for model in groq_models:
-        try:
-            print(f"[AI] Attempting model: {model}")
-            completion = groq_client.chat.completions.create(
-                messages=messages,
-                model=model,
-                temperature=temperature,
-                max_tokens=max_tokens,
-            )
-            return completion, model
-        except Exception as e:
-            err_text = str(e).lower()
-            print(f"[AI] Model {model} failed: {e}")
-            last_error = e
-            if "invalid_api_key" in err_text or "authenticationerror" in err_text:
-                raise RuntimeError(
-                    "Groq rejected the API key (401 invalid_api_key). "
-                    "Update the live GROQ_API_KEY secret and redeploy."
-                ) from e
-            if any(
-                x in err_text
-                for x in [
-                    "rate limit",
-                    "quota",
-                    "overloaded",
-                    "503",
-                    "429",
-                    "decommissioned",
-                    "model_decommissioned",
-                    "not found",
-                    "does not exist",
-                    "invalid model",
-                ]
-            ):
-                print(
-                    f"[AI] Model {model} unavailable/decommissioned/rate-limited — trying next fallback."
+    safe_max_tokens = _safe_max_tokens(messages, max_tokens)
+
+    with _groq_call_semaphore:
+        for model in groq_models:
+            try:
+                print(f"[AI] Attempting model: {model}")
+                completion = groq_client.chat.completions.create(
+                    messages=messages,
+                    model=model,
+                    temperature=temperature,
+                    max_tokens=safe_max_tokens,
                 )
-                continue
-            else:
-                raise e
+                return completion, model
+            except Exception as e:
+                err_text = str(e).lower()
+                print(f"[AI] Model {model} failed: {e}")
+                last_error = e
+                if "invalid_api_key" in err_text or "authenticationerror" in err_text:
+                    raise RuntimeError(
+                        "Groq rejected the API key (401 invalid_api_key). "
+                        "Update the live GROQ_API_KEY secret and redeploy."
+                    ) from e
+                if any(
+                    x in err_text
+                    for x in [
+                        "rate limit",
+                        "quota",
+                        "overloaded",
+                        "503",
+                        "429",
+                        "decommissioned",
+                        "model_decommissioned",
+                        "not found",
+                        "does not exist",
+                        "invalid model",
+                    ]
+                ):
+                    print(
+                        f"[AI] Model {model} unavailable/decommissioned/rate-limited — trying next fallback."
+                    )
+                    continue
+                else:
+                    raise e
     raise last_error or RuntimeError("Unknown Groq error: All models failed")
 
 
@@ -511,19 +549,48 @@ _MEDICAL_CLUES = [
     "complication",
     "risk",
     "prognosis",
+    "diabetic",
+    "ketoacidosis",
+    "hyperglycemia",
+    "hypoglycemia",
 ]
 
 
 def _is_medical_query(text: Optional[str]) -> bool:
     if not text or not text.strip():
         return False
-    normalized = text.lower()
+
+    normalized = text.lower().strip()
     if any(marker in normalized for marker in _NON_MEDICAL_MARKERS):
         return False
+
+    # Short greetings / generic chat should be treated as off-topic.
+    casual_phrases = [
+        "hi",
+        "hello",
+        "hey",
+        "thanks",
+        "thank you",
+        "good morning",
+        "good afternoon",
+        "good evening",
+        "how are you",
+        "what is your name",
+        "who are you",
+        "what can you do",
+        "tell me a joke",
+        "joke",
+        "weather",
+        "news",
+    ]
+    if any(phrase in normalized for phrase in casual_phrases):
+        return False
+
     if any(clue in normalized for clue in _MEDICAL_CLUES):
         return True
-    # Default: allow through — let the AI's persona directive handle off-topic queries
-    return True
+
+    # Default to non-medical unless the message clearly contains medical context.
+    return False
 
 
 def _decode_jwt_token(token: str) -> Optional[Dict[str, Any]]:
@@ -1467,7 +1534,7 @@ async def get_clinical_analysis(
         if not _is_medical_query(query_data.custom_query):
             return {
                 "success": True,
-                "content": "Sorry, I am not programmed for this. Please ask some medical related question.",
+                "content": "I am not programmed for this. Please ask a health-related question about the patient.",
                 "usage": {},
                 "ada_refs_found": [],
             }

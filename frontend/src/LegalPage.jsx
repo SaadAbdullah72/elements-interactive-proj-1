@@ -1,39 +1,14 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React from 'react';
 import AppHeader from './AppHeader';
 import { BG_IMG } from './DoctorLogin';
-import { API_URL } from './apiConfig';
+
+const FRONTEND_PDFS = [
+  { name: '14. Children and Adolescents.pdf', path: '/guidelines/14. Children and Adolescents.pdf' },
+  { name: '15. Management of Diabetes in Pregnancy.pdf', path: '/guidelines/15. Management of Diabetes in Pregnancy.pdf' },
+  { name: '16. Diabetes Care in the Hospital.pdf', path: '/guidelines/16. Diabetes Care in the Hospital.pdf' },
+];
 
 const LegalPage = ({ page, onBack, onNavigate }) => {
-  const [guidelinePdfs, setGuidelinePdfs] = useState([]);
-  const [guidelinePdfError, setGuidelinePdfError] = useState('');
-
-  useEffect(() => {
-    if (page !== 'guidelines' && page !== 'clinical-studies') return;
-
-    let isMounted = true;
-    const loadGuidelinePdfs = async () => {
-      try {
-        const response = await fetch(`${API_URL}/api/guideline-pdfs`);
-        const data = await response.json();
-        if (!response.ok || !data?.success) {
-          throw new Error(data?.detail || 'Unable to load guideline PDFs');
-        }
-
-        if (isMounted) {
-          setGuidelinePdfs(data.files || []);
-          setGuidelinePdfError('');
-        }
-      } catch (error) {
-        if (isMounted) {
-          setGuidelinePdfError(error.message || 'Unable to load guideline PDFs');
-          setGuidelinePdfs([]);
-        }
-      }
-    };
-
-    loadGuidelinePdfs();
-    return () => { isMounted = false; };
-  }, [page]);
 
   let title = '';
   let content = null;
@@ -136,34 +111,28 @@ const LegalPage = ({ page, onBack, onNavigate }) => {
 
         <section className="legal-section">
           <div style={{ display: 'grid', gap: '12px' }}>
-            {guidelinePdfs.length > 0 ? (
-              guidelinePdfs.map((pdf) => (
-                <a
-                  key={pdf.name}
-                  href={`${API_URL}/api/download-guideline-pdf/${encodeURIComponent(pdf.name)}`}
-                  download={pdf.name}
-                  style={{
-                    display: 'block',
-                    padding: '14px 16px',
-                    border: '1px solid #dbe4f0',
-                    borderRadius: '14px',
-                    background: 'linear-gradient(135deg, #ffffff 0%, #f8fbff 100%)',
-                    color: '#0f172a',
-                    textDecoration: 'none',
-                    boxShadow: '0 8px 18px rgba(15, 23, 42, 0.08)',
-                  }}
-                >
-                  <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '4px' }}>{pdf.name}</div>
-                  <div style={{ color: '#475569', fontSize: '12px' }}>
-                    {Math.max(1, Math.round(pdf.size / 1024))} KB • Click to download
-                  </div>
-                </a>
-              ))
-            ) : (
-              <div style={{ padding: '14px 16px', border: '1px dashed #cbd5e1', borderRadius: '12px', color: '#475569' }}>
-                {guidelinePdfError ? guidelinePdfError : 'Loading guideline PDFs…'}
-              </div>
-            )}
+            {FRONTEND_PDFS.map((pdf) => (
+              <a
+                key={pdf.name}
+                href={pdf.path}
+                download={pdf.name}
+                style={{
+                  display: 'block',
+                  padding: '14px 16px',
+                  border: '1px solid #dbe4f0',
+                  borderRadius: '14px',
+                  background: 'linear-gradient(135deg, #ffffff 0%, #f8fbff 100%)',
+                  color: '#0f172a',
+                  textDecoration: 'none',
+                  boxShadow: '0 8px 18px rgba(15, 23, 42, 0.08)',
+                }}
+              >
+                <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '4px' }}>{pdf.name}</div>
+                <div style={{ color: '#475569', fontSize: '12px' }}>
+                  Direct frontend PDF • Click to download
+                </div>
+              </a>
+            ))}
           </div>
         </section>
       </div>
@@ -179,34 +148,28 @@ const LegalPage = ({ page, onBack, onNavigate }) => {
 
         <section className="legal-section">
           <div style={{ display: 'grid', gap: '12px' }}>
-            {guidelinePdfs.length > 0 ? (
-              guidelinePdfs.map((pdf) => (
-                <a
-                  key={pdf.name}
-                  href={`${API_URL}/api/download-guideline-pdf/${encodeURIComponent(pdf.name)}`}
-                  download={pdf.name}
-                  style={{
-                    display: 'block',
-                    padding: '14px 16px',
-                    border: '1px solid #dbe4f0',
-                    borderRadius: '14px',
-                    background: 'linear-gradient(135deg, #ffffff 0%, #f8fbff 100%)',
-                    color: '#0f172a',
-                    textDecoration: 'none',
-                    boxShadow: '0 8px 18px rgba(15, 23, 42, 0.08)',
-                  }}
-                >
-                  <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '4px' }}>{pdf.name}</div>
-                  <div style={{ color: '#475569', fontSize: '12px' }}>
-                    {Math.max(1, Math.round(pdf.size / 1024))} KB • Click to download
-                  </div>
-                </a>
-              ))
-            ) : (
-              <div style={{ padding: '14px 16px', border: '1px dashed #cbd5e1', borderRadius: '12px', color: '#475569' }}>
-                {guidelinePdfError ? guidelinePdfError : 'Loading PDF files…'}
-              </div>
-            )}
+            {FRONTEND_PDFS.map((pdf) => (
+              <a
+                key={pdf.name}
+                href={pdf.path}
+                download={pdf.name}
+                style={{
+                  display: 'block',
+                  padding: '14px 16px',
+                  border: '1px solid #dbe4f0',
+                  borderRadius: '14px',
+                  background: 'linear-gradient(135deg, #ffffff 0%, #f8fbff 100%)',
+                  color: '#0f172a',
+                  textDecoration: 'none',
+                  boxShadow: '0 8px 18px rgba(15, 23, 42, 0.08)',
+                }}
+              >
+                <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '4px' }}>{pdf.name}</div>
+                <div style={{ color: '#475569', fontSize: '12px' }}>
+                  Direct frontend PDF • Click to download
+                </div>
+              </a>
+            ))}
           </div>
         </section>
       </div>
