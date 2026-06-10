@@ -11,7 +11,7 @@ from typing import Dict, Any, Optional, List
 import json
 import os
 from datetime import datetime
-
+import re
 
 class ADAGuidelinesEngine:
     """
@@ -30,18 +30,62 @@ class ADAGuidelinesEngine:
         self.additional_guidelines: Dict[str, Dict[str, Any]] = {}
         self.guideline_sources: List[str] = []
         self.system_prompt_template = self._get_base_system_prompt()
-    
+        self.total_recommendations = 0
+        self.sample_cases = 0
+        self.loaded_sources = 0
+
+    def auto_load_from_directory(self, directory_path: str) -> Dict[str, Any]:
+        """
+        Automatically loads all PDF files from a given directory as guidelines.
+        """
+        loaded_count = 0
+        errors = []
+        if not os.path.exists(directory_path):
+            os.makedirs(directory_path, exist_ok=True)
+            return {"loaded": 0, "total_recommendations": 0, "sample_cases": 0, "errors": [f"Directory not found: {directory_path}"]}
+
+        for filename in os.listdir(directory_path):
+            if filename.lower().endswith(".pdf"):
+                filepath = os.path.join(directory_path, filename)
+                try:
+                    from pypdf import PdfReader
+                    reader = PdfReader(filepath)
+                    text = "".join([page.extract_text() or "" for page in reader.pages])
+                    source_name = os.path.splitext(filename)[0]
+                    self.add_guideline_source(source_name, text, "pdf_guideline")
+                    loaded_count += 1
+                except Exception as e:
+                    errors.append(f"Failed to load {filename}: {e}")
+        
+        # Recalculate stats after batch load
+        self.loaded_sources = len(self.guideline_sources)
+
+        return {
+            "loaded": loaded_count,
+            "total_recommendations": self.total_recommendations,
+            "sample_cases": self.sample_cases,
+            "errors": errors
+        }
+
+    def set_guideline_content(self, content: str, source_name: str = "ADA_PRIMARY"):
+        """
+        Sets the primary guideline content, replacing any existing primary content.
+        """
+        self.guideline_content = content
+        if source_name not in self.guideline_sources:
+            self.guideline_sources.append(source_name)
+        
+        # Estimate recommendations and cases
+        recs = len(re.findall(r'Rec\.\s*\d+\.\d+', content))
+        cases = len(re.findall(r'Case\s*\d+', content))
+        
+        self.total_recommendations += recs
+        self.sample_cases += cases
+        self.loaded_sources = len(self.guideline_sources)
+
     def add_guideline_source(self, source_name: str, content: str, source_type: str = "guideline") -> Dict[str, Any]:
         """
-        Add a new guideline source (can be ADA, other standards, best practices, etc.)
-        
-        Args:
-            source_name: Name/identifier for the guideline (e.g., "ADA_2026", "WHO_Guidelines", "Clinical_Best_Practices")
-            content: Extracted text from the PDF
-            source_type: Type of guideline (e.g., "guideline", "standard", "protocol", "best_practice")
-            
-        Returns:
-            Confirmation with source details
+        Add a new guideline source.
         """
         self.additional_guidelines[source_name] = {
             "content": content,
@@ -50,8 +94,18 @@ class ADAGuidelinesEngine:
             "word_count": len(content.split()),
             "char_count": len(content)
         }
-        self.guideline_sources.append(source_name)
+        if source_name not in self.guideline_sources:
+            self.guideline_sources.append(source_name)
         
+        self.loaded_sources = len(self.guideline_sources)
+        
+        # Enhanced detection for recommendations
+        recs = len(re.findall(r'Rec\.\s*\d+\.\d+|Recommendation\s*\d+', content))
+        cases = len(re.findall(r'Case\s*\d+', content))
+        
+        self.total_recommendations += recs
+        self.sample_cases += cases
+
         return {
             "success": True,
             "source_name": source_name,
@@ -82,10 +136,22 @@ class ADAGuidelinesEngine:
             }
         
         return all_sources
-    
+
+    def get_guideline_stats(self) -> Dict[str, Any]:
+        """
+        Returns statistics about the loaded guidelines.
+        """
+        return {
+            "guideline_loaded": self.loaded_sources > 0,
+            "total_sources_loaded": self.loaded_sources,
+            "total_recommendations": self.total_recommendations,
+            "sample_cases_loaded": self.sample_cases,
+            "sources": self.get_all_guideline_sources()
+        }
+
     def _get_base_system_prompt(self) -> str:
         """
-        Returns the core ADA 2026 system prompt as specified by user.
+        Returns the core ADA 2026 system prompt.
         """
         return """SYSTEM ROLE: ADA 2026 CLINICAL DECISION ENGINE
 
@@ -192,77 +258,11 @@ STEP 7: Add monitoring + follow-up guidance
 
 ### Important Note:
 This response strictly follows ADA 2026 Standards of Care and must be interpreted with clinical judgment.
-
---------------------------------------------------
-🚫 FAILURE HANDLING LOGIC
---------------------------------------------------
-
-IF guideline coverage is incomplete:
-
-### Clinical Scenario/Question:
-[User query]
-
-### Guideline Reference:
-No direct ADA 2026 reference found.
-
-### Response:
-The ADA 2026 guidelines do not explicitly address this scenario. Therefore, no guideline-based options can be generated.
-
---------------------------------------------------
-🧩 EDGE CASE HANDLING
---------------------------------------------------
-
-1. Missing Data:
-- Explicitly list missing variables
-- Do NOT assume values
-
-2. Conflicting Data:
-- Highlight inconsistency
-- Provide conditional options
-
-3. Borderline Values:
-- Mention classification uncertainty
-- Provide adjacent category options
-
-4. Multiple Conditions:
-- Combine recommendations carefully
-- Avoid contradiction
-
---------------------------------------------------
-🧑‍⚕️ COMMUNICATION STYLE
---------------------------------------------------
-
-- Professional, clinical tone
-- Person-first language (e.g., "person with diabetes")
-- Support shared decision-making
-- Avoid authoritative or absolute tone
-
---------------------------------------------------
-📥 INPUT FORMAT (FROM USER)
---------------------------------------------------
-
-Patient Data will be provided like:
-
-{
-  "age": 55,
-  "A1C": 6.0,
-  "FPG": 115,
-  "BMI": 28,
-  "conditions": [],
-  "risk_factors": ["overweight"]
-}
 """
     
     def build_ada_prompt(self, patient_data: Dict[str, Any], clinical_question: str) -> tuple[str, Dict[str, Any]]:
         """
-        Build a complete ADA-compliant prompt for the LLM incorporating ALL guideline sources.
-        
-        Args:
-            patient_data: Dictionary with patient clinical parameters
-            clinical_question: The specific clinical question to answer
-            
-        Returns:
-            tuple: (complete_system_prompt, guideline_usage_metadata)
+        Build a complete ADA-compliant prompt.
         """
         guideline_section = self._format_all_guidelines()
         usage_metadata = self._get_guideline_usage_metadata()
@@ -324,166 +324,31 @@ ANALYSIS BEGINS
         """Format all guideline sources for prompt insertion"""
         all_content = ""
         
-        # Add primary ADA guidelines
         if self.guideline_content:
-            all_content += f"""
-Source: ADA_PRIMARY
-Type: primary
-{self._truncate_content(self.guideline_content, 5000)}
-"""
+            all_content += f"\nSource: ADA_PRIMARY\nType: primary\n{self._truncate_content(self.guideline_content, 5000)}\n"
         
-        # Add additional guideline sources
         for source_name, source_data in self.additional_guidelines.items():
             source_type = source_data.get("type", "guideline").replace("_", " ").title()
-            all_content += f"""
-Source: {source_name} ({source_type})
-{self._truncate_content(source_data['content'], 4000)}
-"""
+            all_content += f"\nSource: {source_name} ({source_type})\n{self._truncate_content(source_data['content'], 4000)}\n"
         
-        if not all_content:
-            return """NO GUIDELINE CONTENT LOADED.
+        return all_content if all_content else "NO GUIDELINE CONTENT LOADED."
 
-Please upload guideline PDFs before using ADA mode.
-
-To add guidelines:
-1. Upload guideline PDF via /upload-guideline endpoint
-2. Extracted text will be stored and used in all subsequent queries
-"""
-        
-        return all_content
-    
     def _truncate_content(self, content: str, max_chars: int) -> str:
-        """Truncate content to fit within token limits"""
-        if len(content) > max_chars:
-            return content[:max_chars] + f"\n\n[... content truncated ({len(content) - max_chars} chars) ...]"
-        return content
-    
+        if len(content) <= max_chars:
+            return content
+        return content[:max_chars] + "... [TRUNCATED]"
+
+    def _format_patient_data(self, data: Dict[str, Any]) -> str:
+        return json.dumps(data, indent=2)
+
     def _get_guideline_usage_metadata(self) -> Dict[str, Any]:
-        """Get metadata about which guidelines are active"""
-        all_sources = self.get_all_guideline_sources()
         return {
-            "active_guideline_sources": len(all_sources),
-            "sources": list(all_sources.keys()),
-            "total_content_chars": sum(m.get("content_length", 0) for m in all_sources.values()),
-            "total_content_words": sum(m.get("word_count", 0) for m in all_sources.values()),
-            "timestamp": datetime.utcnow().isoformat()
-        }
-    
-    def _format_patient_data(self, patient_data: Dict[str, Any]) -> str:
-        """Format patient data for the prompt."""
-        formatted = ""
-        for key, value in patient_data.items():
-            if key.upper() == "A1C":
-                formatted += f"- A1C: {value}%\n"
-            elif key.upper() == "FPG":
-                formatted += f"- Fasting Plasma Glucose (FPG): {value} mg/dL\n"
-            elif key.upper() == "BMI":
-                formatted += f"- BMI: {value} kg/m²\n"
-            else:
-                formatted += f"- {key.replace('_', ' ').title()}: {value}\n"
-        
-        return formatted or "No patient data provided."
-    
-    def validate_response(self, ai_response: str) -> Dict[str, Any]:
-        """
-        Validate that the AI response follows ADA guidelines.
-        
-        Args:
-            ai_response: The AI-generated response to validate
-            
-        Returns:
-            Validation result with warnings/errors
-        """
-        issues = []
-        
-        # Check for required components
-        required_sections = [
-            "Clinical Scenario",
-            "Guideline Reference",
-            "Recommended Options"
-        ]
-        
-        for section in required_sections:
-            if section not in ai_response:
-                issues.append(f"⚠️  Missing section: '{section}'")
-        
-        # Check for hallucination indicators
-        hallucination_phrases = [
-            "based on my general knowledge",
-            "in my experience",
-            "I believe",
-            "typically",
-            "usually"
-        ]
-        
-        for phrase in hallucination_phrases:
-            if phrase.lower() in ai_response.lower():
-                issues.append(f"⚠️  Potential hallucination detected: '{phrase}'")
-        
-        # Check for guideline traceability
-        if "Section" not in ai_response and "Recommendation" not in ai_response:
-            issues.append("⚠️  No guideline references/traceability found")
-        
-        return {
-            "is_valid": len(issues) == 0,
-            "issues": issues,
-            "warning_count": len(issues),
-            "timestamp": datetime.utcnow().isoformat()
-        }
-    
-    def set_guideline_content(self, content: str, source_name: str = "ADA_PRIMARY") -> Dict[str, Any]:
-        """
-        Update the primary guideline content (e.g., from uploaded PDF).
-        
-        Args:
-            content: Extracted guideline text
-            source_name: Name of the guideline source
-            
-        Returns:
-            Status confirmation with metadata
-        """
-        self.guideline_content = content
-        
-        # Also add to additional guidelines for tracking
-        if source_name not in self.additional_guidelines:
-            self.guideline_sources.append(source_name)
-        
-        self.additional_guidelines[source_name] = {
-            "content": content,
-            "type": "primary",
-            "added_at": datetime.utcnow().isoformat(),
-            "word_count": len(content.split()),
-            "char_count": len(content)
-        }
-        
-        return {
-            "success": True,
-            "message": f"Guideline content updated: {source_name}",
-            "guideline_length": len(content),
-            "word_count": len(content.split()),
-            "source_name": source_name,
-            "timestamp": datetime.utcnow().isoformat()
-        }
-    
-    def get_guideline_stats(self) -> Dict[str, Any]:
-        """Get comprehensive statistics about all loaded guidelines."""
-        all_sources = self.get_all_guideline_sources()
-        
-        return {
-            "total_sources_loaded": len(all_sources),
-            "guideline_loaded": bool(all_sources),
-            "sources": all_sources,
-            "primary_guideline_loaded": bool(self.guideline_content),
-            "total_content_chars": sum(m.get("content_length", 0) for m in all_sources.values()),
-            "total_content_words": sum(m.get("word_count", 0) for m in all_sources.values()),
-            "timestamp": datetime.utcnow().isoformat()
+            "guideline_loaded": self.loaded_sources > 0,
+            "sources_count": self.loaded_sources,
+            "recommendations_estimate": self.total_recommendations
         }
 
-
-# Initialize global engine instance
-ada_engine = ADAGuidelinesEngine()
-
-
-def get_ada_engine() -> ADAGuidelinesEngine:
-    """Get the global ADA engine instance."""
-    return ada_engine
+def get_ada_engine():
+    if not hasattr(get_ada_engine, "_instance"):
+        get_ada_engine._instance = ADAGuidelinesEngine()
+    return get_ada_engine._instance

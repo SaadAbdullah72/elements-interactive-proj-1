@@ -1,6 +1,16 @@
 """
-IntelliHealth AI Clinical System — Backend
-FastAPI + Gemma persona (Groq) · ADA 2026 auto-loaded guidelines · Session persistence · PDF export
+IntelliHealth AI Clinical System — Backend (Upgraded v4.1)
+FastAPI + Gemma persona (Groq) · ADA 2026 auto-loaded guidelines · Session persistence · Continuous Learning · PDF Export
+
+CHANGELOG v4.1:
+  - max_tokens raised from 1536 → 8192 (fixes truncated responses)
+  - ADA engine "not found" fallback filtered out (stops model echoing dead-end message)
+  - guideline_ctx hard-capped at 4000 chars to preserve response token budget
+  - past_cases_ctx capped at 1500 chars
+  - Richer, more directive system prompts for detailed consultation responses
+  - _is_medical_query non-medical blocklist tightened (removed "history", "code", "language")
+  - temperature raised slightly to 0.4 for more expansive clinical reasoning
+  - Added explicit "do not truncate" instruction to every system prompt
 """
 
 import os
@@ -8,10 +18,13 @@ import io
 import asyncio
 import base64
 import uuid
+import json
+import jwt
+import threading
+import re
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Optional, Dict, Any, List
-import threading
 
 from fastapi import (
     FastAPI,
@@ -23,19 +36,12 @@ from fastapi import (
     Request,
 )
 from fastapi.middleware.cors import CORSMiddleware
-import jwt
-from fastapi.responses import HTMLResponse, StreamingResponse
-from pymongo import MongoClient
+from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse, FileResponse
+from pymongo import MongoClient, UpdateOne
 from pydantic import BaseModel
 from groq import Groq
 from pypdf import PdfReader
 from dotenv import load_dotenv
-
-from doctor_auth import router as doctor_router
-from auth import router as auth_router
-from profile import router as profile_router
-from email_service import send_diagnosis_email
-from ada_guidelines_engine import get_ada_engine
 
 # ReportLab imports for PDF generation
 from reportlab.lib.pagesizes import letter
@@ -52,24 +58,47 @@ from reportlab.lib.units import mm
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
 
+# Import local modules
+try:
+    from doctor_auth import router as doctor_router
+    from auth import router as auth_router
+    from profile import router as profile_router
+    from email_service import send_diagnosis_email
+    from ada_guidelines_engine import get_ada_engine
+except ImportError:
+    print("[Warning] Some local modules not found. Ensure they exist on Replit.")
+    doctor_router = APIRouter()
+    auth_router = APIRouter()
+    profile_router = APIRouter()
+
+    def send_diagnosis_email(*args, **kwargs):
+        pass
+
+    def get_ada_engine():
+        return None
+
+
 load_dotenv()
 
-# ── Auto-load guidelines at startup ───────────────────────────────────────────
+# ── Global State & Config ───────────────────────────────────────────────────
 
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _GUIDELINES_DIR = os.path.join(os.path.dirname(__file__), "guidelines")
-
-# Global variable to store guideline loading status and results
 guideline_load_status = {"loaded": False, "details": "Not yet loaded"}
 
 
 async def load_guidelines_task():
     global guideline_load_status
     ada = get_ada_engine()
+    if not ada:
+        guideline_load_status["details"] = "ADA Engine not available"
+        return
     try:
         print("[Guidelines] Starting background guideline load...")
-        # This synchronous call will run in a separate thread thanks to asyncio.to_thread
-        result = await asyncio.to_thread(ada.auto_load_from_directory, _GUIDELINES_DIR)
+        if not os.path.exists(_GUIDELINES_DIR):
+            os.makedirs(_GUIDELINES_DIR, exist_ok=True)
 
+        result = await asyncio.to_thread(ada.auto_load_from_directory, _GUIDELINES_DIR)
         guideline_load_status["loaded"] = True
         guideline_load_status["details"] = (
             f"Loaded {result['loaded']} files | "
@@ -91,70 +120,195 @@ async def load_guidelines_task():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("[Guidelines] Server starting... scheduling heavy load for fast boot")
-    # Schedule the guideline loading as a background task
+    print("[System] IntelliHealth AI Backend Starting...")
     asyncio.create_task(load_guidelines_task())
-
-    # 🚀 IMPORTANT: allow server to start immediately
     yield
+    print("[System] IntelliHealth AI Backend Shutting Down")
 
-    print("[Guidelines] Server shutting down")
 
+# ── App Initialization ───────────────────────────────────────────────────────
 
-# ── App ────────────────────────────────────────────────────────────────────────
 app = FastAPI(
     title="IntelliHealth AI Clinical System",
-    description="Advanced AI-assisted clinical decision support powered by Gemma (Groq)",
-    version="3.0.0",
+    description="Advanced AI-assisted clinical decision support with continuous learning",
+    version="4.1.0",
     docs_url="/api/docs",
     redoc_url="/api/redoc",
     openapi_url="/api/openapi.json",
     lifespan=lifespan,
 )
 
-# ── CORS ───────────────────────────────────────────────────────────────────────
+# ── CORS Configuration ───────────────────────────────────────────────────────
+
+DEFAULT_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://localhost:8080",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:8080",
+    "https://tmp.diabassist.app",
+    "https://diabassist.app",
+    "https://www.diabassist.app",
+    "https://health-zeta-three.vercel.app",
+]
+
+extra_origins = os.getenv("CORS_ALLOWED_ORIGINS", "")
+if extra_origins:
+    DEFAULT_ALLOWED_ORIGINS.extend(
+        [o.strip() for o in extra_origins.split(",") if o.strip()]
+    )
+
+for env_name in ("FRONTEND_URL", "REPLIT_DOMAINS", "REPLIT_HOST"):
+    value = os.getenv(env_name, "")
+    if value:
+        if value.startswith("http"):
+            DEFAULT_ALLOWED_ORIGINS.append(value.rstrip("/"))
+        else:
+            DEFAULT_ALLOWED_ORIGINS.append(f"https://{value.lstrip('.').rstrip('/')}")
+
+ALLOWED_ORIGINS = list(dict.fromkeys(DEFAULT_ALLOWED_ORIGINS))
+print(f"[CORS] Allowed origins: {ALLOWED_ORIGINS}")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=r"https://.*\.diabassist\.app",
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
+    expose_headers=["Content-Disposition"],
+    max_age=600,
 )
 
-@app.middleware("http")
-async def enforce_cors_headers(request: Request, call_next):
-    response = await call_next(request)
-    response.headers["Access-Control-Allow-Origin"] = "*"
-    response.headers["Access-Control-Allow-Methods"] = "GET,POST,PUT,DELETE,OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "Authorization,Content-Type,Accept,Origin,User-Agent"
-    response.headers["Access-Control-Max-Age"] = "86400"
-    return response
+# ── Global Exception Handlers ────────────────────────────────────────────────
 
-# ── Groq client ────────────────────────────────────────────────────────────────
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    import traceback
+
+    traceback.print_exc()
+    origin = request.headers.get("origin", "*")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Internal server error: {str(exc)}"},
+        headers={
+            "Access-Control-Allow-Origin": origin,
+            "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
+            "Access-Control-Allow-Headers": "Authorization,Content-Type,Accept,Origin,User-Agent",
+            "Access-Control-Allow-Credentials": "true",
+        },
+    )
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    origin = request.headers.get("origin", "*")
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+        headers={
+            "Access-Control-Allow-Origin": origin,
+            "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
+            "Access-Control-Allow-Headers": "Authorization,Content-Type,Accept,Origin,User-Agent",
+            "Access-Control-Allow-Credentials": "true",
+        },
+    )
+
+
+# ── MongoDB Setup ────────────────────────────────────────────────────────────
+
+mongodburl = os.getenv("MONGODB_URL", "mongodb://localhost:27017/")
+db_name = os.getenv("MONGODB_DBFULL_DB", "dbfull")
+_mongo = None
+_db = None
+
+patients_collection = None
+analyses_collection = None
+email_notifications_collection = None
+learning_journal_collection = None
+chat_sessions_collection = None
+
+
+def init_db():
+    global \
+        _mongo, \
+        _db, \
+        patients_collection, \
+        analyses_collection, \
+        email_notifications_collection, \
+        learning_journal_collection, \
+        chat_sessions_collection
+
+    try:
+        _mongo = MongoClient(mongodburl, serverSelectionTimeoutMS=5000)
+        _mongo.admin.command("ping")
+        _db = _mongo[db_name]
+
+        patients_collection = _db["patients"]
+        analyses_collection = _db["analyses"]
+        email_notifications_collection = _db["email_notifications"]
+        learning_journal_collection = _db["learning_journal"]
+        chat_sessions_collection = _db["chat_sessions"]
+
+        learning_journal_collection.create_index([("disease", 1), ("query_type", 1)])
+        learning_journal_collection.create_index([("rating", -1)])
+        chat_sessions_collection.create_index([("session_id", 1)], unique=True)
+        chat_sessions_collection.create_index([("doctor_id", 1), ("updated_at", -1)])
+
+        print(f"[DB] Connected to MongoDB: {db_name}")
+    except Exception as e:
+        print(f"[DB] Connection failed: {e}")
+
+
+init_db()
+
+# ── Groq Client & Model Configuration ────────────────────────────────────────
+#
+# Current active production models on GroqCloud (as of June 2026):
+#   llama-3.3-70b-versatile   — 280 t/s  | 131k ctx | best quality general use
+#   openai/gpt-oss-120b       — 500 t/s  | 131k ctx | flagship, reasoning
+#   openai/gpt-oss-20b        — 1000 t/s | 131k ctx | fast, lightweight
+#   llama-3.1-8b-instant      — 560 t/s  | 131k ctx | ultra-fast fallback
+#
+# REMOVED (decommissioned):
+#   gemma2-9b-it, llama-3.1-70b-versatile, mixtral-8x7b-32768
+
 
 def _resolve_groq_api_key() -> str:
-    """Prefer the real runtime environment variable, with a couple of common fallbacks."""
     for name in ("GROQ_API_KEY", "GROQ_KEY", "GROQ_API_TOKEN", "GROQ_TOKEN"):
         value = os.getenv(name)
-        if isinstance(value, str) and value.strip():
+        if value and value.strip():
             return value.strip()
     return ""
 
 
 groq_api_key = _resolve_groq_api_key()
 groq_client = Groq(api_key=groq_api_key) if groq_api_key else None
-# Underlying engine: llama-3.1-8b-instant; assistant persona: Gemma clinical reasoning model.
-groq_model_primary = "llama-3.1-8b-instant"
-groq_model_fallbacks = ["qwen/qwen3-32b"]
+
+groq_model_primary = "llama-3.3-70b-versatile"
+groq_model_fallbacks = [
+    "openai/gpt-oss-120b",
+    "openai/gpt-oss-20b",
+    "llama-3.1-8b-instant",
+]
 groq_models = [groq_model_primary] + groq_model_fallbacks
 groq_model = groq_model_primary
-print(
-    f"[AI] Primary Model: {groq_model_primary} | Fallbacks: {groq_model_fallbacks} | Client: {'ready' if groq_client else 'NOT configured'}"
-)
+
+# ── FIX 1: max_tokens raised from 1536 → 8192 ────────────────────────────────
+# The old 1536 limit cut off responses mid-section. With 7 mandatory sections
+# plus a full References block, you need at least 4096 tokens; 8192 gives
+# comfortable headroom for complex multi-drug management plans.
+_MAX_RESPONSE_TOKENS = 8192
 
 
-# ── Groq model runner with fallback support ───────────────────────────────────
-def _call_groq_with_model(messages, max_tokens=1536, temperature=0.3):
+def _call_groq_with_model(messages, max_tokens=_MAX_RESPONSE_TOKENS, temperature=0.4):
+    """
+    temperature raised from 0.3 → 0.4:
+      - 0.3 made responses overly terse and repetitive across queries
+      - 0.4 produces more expansive clinical reasoning while remaining factual
+    """
     last_error = None
     for model in groq_models:
         try:
@@ -172,51 +326,34 @@ def _call_groq_with_model(messages, max_tokens=1536, temperature=0.3):
             last_error = e
             if "invalid_api_key" in err_text or "authenticationerror" in err_text:
                 raise RuntimeError(
-                    "Groq rejected the API key (401 invalid_api_key). Update the live GROQ_API_KEY secret in your hosting provider and redeploy."
+                    "Groq rejected the API key (401 invalid_api_key). "
+                    "Update the live GROQ_API_KEY secret and redeploy."
                 ) from e
-            if any(x in err_text for x in ["rate limit", "rate_limit_exceeded", "tokens per day", "quota", "model_not_found", "does not exist"]):
-                print(f"[AI] Model {model} unavailable or rate-limited, trying next fallback model.")
+            if any(
+                x in err_text
+                for x in [
+                    "rate limit",
+                    "quota",
+                    "overloaded",
+                    "503",
+                    "429",
+                    "decommissioned",
+                    "model_decommissioned",
+                    "not found",
+                    "does not exist",
+                    "invalid model",
+                ]
+            ):
+                print(
+                    f"[AI] Model {model} unavailable/decommissioned/rate-limited — trying next fallback."
+                )
                 continue
-            raise
-    raise last_error if last_error else RuntimeError("Unknown Groq error")
+            else:
+                raise e
+    raise last_error or RuntimeError("Unknown Groq error: All models failed")
 
 
-# ── MongoDB ────────────────────────────────────────────────────────────────────
-mongodburl = os.getenv("MONGODB_URL", "mongodb://localhost:27017/")
-db_name = os.getenv("MONGODB_DBFULL_DB", "dbfull")
-chat_sessions_collection = None
-try:
-    _mongo = MongoClient(mongodburl, serverSelectionTimeoutMS=5000)
-    _mongo.admin.command("ping")
-    _db = _mongo[db_name]
-    patients_collection = _db["patients"]
-    analyses_collection = _db["analyses"]
-    email_notifications_collection = _db["email_notifications"]
-    learning_journal_collection = _db["learning_journal"]
-    learning_journal_collection.create_index([("disease", 1), ("query_type", 1)])
-    learning_journal_collection.create_index([("rating", 1)])
-    chat_sessions_collection = _db["chat_sessions"]
-    chat_sessions_collection.create_index([("session_id", 1)], unique=True)
-    print(f"[DB] Connected to {db_name}")
-except Exception as e:
-    print(f"[DB] Connection failed: {e}")
-    _mongo = None
-    _db = None
-    patients_collection = None
-    analyses_collection = None
-    email_notifications_collection = None
-    learning_journal_collection = None
-    chat_sessions_collection = None
-
-# ── Routers ────────────────────────────────────────────────────────────────────
-app.include_router(doctor_router)
-app.include_router(auth_router)
-app.include_router(profile_router)
-
-api_router = APIRouter(prefix="/api")
-
-
-# ── Pydantic models ────────────────────────────────────────────────────────────
+# ── Pydantic Models ──────────────────────────────────────────────────────────
 
 
 class ClinicalQuery(BaseModel):
@@ -260,112 +397,194 @@ class ExportReportRequest(BaseModel):
     export_date: Optional[str] = ""
 
 
+class FeedbackRequest(BaseModel):
+    interaction_id: Optional[str] = ""
+    disease: str
+    query_type: str
+    rating: int
+    doctor_feedback: Optional[str] = ""
+    correction: Optional[str] = ""
+
+
+# ── Helpers & Utils ──────────────────────────────────────────────────────────
+
+# ── FIX 2: Tightened non-medical blocklist ────────────────────────────────────
+# Removed "history", "code", "language", "book", "describe", "tell me about"
+# from the blocklist — these are common in medical queries:
+#   "patient has a history of..."   → was incorrectly blocked
+#   "describe the condition"        → was incorrectly blocked
+# Only block terms that are unambiguously non-medical.
+
+_NON_MEDICAL_MARKERS = [
+    "weather",
+    "stock market",
+    "movie",
+    "movies",
+    "music",
+    "song",
+    "sports score",
+    "football match",
+    "soccer game",
+    "basketball game",
+    "tennis match",
+    "travel destination",
+    "flight booking",
+    "restaurant",
+    "recipe",
+    "cooking tutorial",
+    "video game",
+    "gaming",
+    "javascript",
+    "python script",
+    "computer repair",
+    "email template",
+    "text message",
+    "sms template",
+    "political news",
+    "election result",
+    "cryptocurrency",
+    "joke",
+    "funny meme",
+    "write a poem",
+    "write a story",
+    "how are you",
+    "what is your name",
+    "who are you",
+    "translate this sentence",
+    "math problem",
+    "calculus",
+]
+
+_MEDICAL_CLUES = [
+    "health",
+    "doctor",
+    "clinic",
+    "medical",
+    "medicine",
+    "medication",
+    "symptom",
+    "symptoms",
+    "treatment",
+    "diagnosis",
+    "pain",
+    "illness",
+    "condition",
+    "disease",
+    "therapy",
+    "consultation",
+    "vaccine",
+    "appointment",
+    "nausea",
+    "fever",
+    "cough",
+    "headache",
+    "infection",
+    "patient",
+    "blood",
+    "sugar",
+    "glucose",
+    "insulin",
+    "pressure",
+    "heart",
+    "kidney",
+    "liver",
+    "lung",
+    "chronic",
+    "acute",
+    "dosage",
+    "prescription",
+    "lab",
+    "test",
+    "scan",
+    "x-ray",
+    "mri",
+    "ecg",
+    "hba1c",
+    "bmi",
+    "bp",
+    "pulse",
+    "allerg",
+    "referral",
+    "specialist",
+    "surgery",
+    "procedure",
+    "complication",
+    "risk",
+    "prognosis",
+]
+
+
 def _is_medical_query(text: Optional[str]) -> bool:
     if not text or not text.strip():
         return False
-
     normalized = text.lower()
-
-    non_medical_markers = [
-        "weather", "stock", "stocks", "market", "movie", "movies", "music", "song",
-        "sports", "football", "soccer", "basketball", "tennis", "travel", "flight",
-        "restaurant", "recipe", "cook", "cooking", "game", "gaming", "programming",
-        "code", "javascript", "python", "computer", "email", "text message", "sms",
-        "news", "politics", "election", "government", "economy", "finance", "bank",
-        "math", "history", "geography", "language", "book", "novel", "story", "poem",
-        "joke", "funny", "meme", "how are you", "what is your name", "who are you",
-        "tell me about", "write a", "create a", "describe a", "teach me", "translate",
-    ]
-
-    if any(marker in normalized for marker in non_medical_markers):
+    if any(marker in normalized for marker in _NON_MEDICAL_MARKERS):
         return False
-
-    medical_intent_clues = [
-        "health", "doctor", "clinic", "medical", "medicine", "medication",
-        "symptom", "symptoms", "treatment", "diagnosis", "pain", "illness",
-        "condition", "disease", "therapy", "consultation", "vaccine",
-        "appointment", "nausea", "fever", "cough", "headache", "infection",
-    ]
-
-    if any(clue in normalized for clue in medical_intent_clues):
+    if any(clue in normalized for clue in _MEDICAL_CLUES):
         return True
-
-    generic_health_questions = [
-        "should i", "what should i do", "what can i do", "help me", "i have",
-        "i'm feeling", "i am feeling", "my", "me", "feeling unwell", "feeling sick",
-        "is it normal", "should i see", "need advice", "concerned about", "worried about",
-    ]
-
-    if any(clue in normalized for clue in generic_health_questions):
-        return True
-
-    # If the query is not obviously non-medical, assume it is medical or health-related.
+    # Default: allow through — let the AI's persona directive handle off-topic queries
     return True
 
 
-def _ensure_session_id(session_id: Optional[str]) -> str:
-    if session_id and session_id.strip():
-        return session_id.strip()
-    return str(uuid.uuid4())
-
-
-def _normalize_chat_history(raw_history: Optional[List[Dict[str, Any]]]) -> List[Dict[str, str]]:
-    normalized: List[Dict[str, str]] = []
-    if not raw_history:
-        return normalized
-    for entry in raw_history:
-        if not isinstance(entry, dict):
-            continue
-        role = entry.get("role", "user")
-        if role not in ("user", "assistant"):
-            role = "assistant" if entry.get("response") else "user"
-        content = entry.get("content") or entry.get("query") or entry.get("response") or ""
-        if content:
-            normalized.append({"role": role, "content": str(content)})
-    return normalized
-
-
-def _trim_chat_history(history: List[Dict[str, str]], max_messages: int = 12) -> List[Dict[str, str]]:
-    return history[-max_messages:]
-
-
-def _reconcile_history(stored: List[Dict[str, str]], incoming: List[Dict[str, str]]) -> List[Dict[str, str]]:
-    if not stored:
-        return incoming
-    if not incoming:
-        return stored
-    return incoming if len(incoming) >= len(stored) else stored
-
-
-def _load_chat_session(session_id: str) -> Optional[List[Dict[str, str]]]:
-    if not session_id or not _db or not chat_sessions_collection:
+def _decode_jwt_token(token: str) -> Optional[Dict[str, Any]]:
+    try:
+        return jwt.decode(
+            token,
+            os.getenv("JWT_SECRET_KEY", "change-in-production"),
+            algorithms=["HS256"],
+        )
+    except Exception:
         return None
-    doc = chat_sessions_collection.find_one({"session_id": session_id})
-    if not doc:
-        return None
-    return doc.get("history", [])
 
 
-def _save_chat_session(session_id: str, history: List[Dict[str, str]], metadata: Optional[Dict[str, Any]] = None) -> None:
-    if not session_id or not chat_sessions_collection:
-        return
-    timestamp = datetime.utcnow().isoformat()
-    chat_sessions_collection.update_one(
-        {"session_id": session_id},
-        {
-            "$set": {
-                "session_id": session_id,
-                "updated_at": timestamp,
-                "metadata": metadata or {},
-                "history": history,
-            },
-            "$setOnInsert": {"created_at": timestamp},
-        },
-        upsert=True,
+def _apply_doctor_identity_from_request(
+    query_data: ClinicalQuery, request: Request
+) -> None:
+    auth_header = request.headers.get("authorization") or request.headers.get(
+        "Authorization"
     )
+    if not auth_header or not auth_header.lower().startswith("bearer "):
+        return
+    token = auth_header.split(" ", 1)[1].strip()
+    payload = _decode_jwt_token(token)
+    if not payload:
+        return
+    if not query_data.doctor_name and payload.get("name"):
+        query_data.doctor_name = payload.get("name")
+    if not query_data.doctor_id and payload.get("doctor_id"):
+        query_data.doctor_id = payload.get("doctor_id")
 
 
-# ── Helpers ────────────────────────────────────────────────────────────────────
+def _patient_belongs_to_doctor(
+    patient: Optional[Dict[str, Any]],
+    doctor_id: Optional[str],
+    doctor_name: Optional[str] = None,
+) -> bool:
+    if not isinstance(patient, dict):
+        return False
+    owner_id = patient.get("added_by_doctor_id") or patient.get("doctor_id") or ""
+    if isinstance(owner_id, str) and owner_id.strip() and doctor_id:
+        if owner_id.strip() == str(doctor_id).strip():
+            return True
+    owner_name = patient.get("added_by_doctor") or patient.get("doctor_name") or ""
+    if isinstance(owner_name, str) and owner_name.strip() and doctor_name:
+        return owner_name.strip().casefold() == str(doctor_name).strip().casefold()
+    return False
+
+
+def _require_patient_scope(query_data: ClinicalQuery, request: Request) -> None:
+    if patients_collection is None or not query_data.patid:
+        return
+    _apply_doctor_identity_from_request(query_data, request)
+    patient = patients_collection.find_one({"patid": query_data.patid}, {"_id": 0})
+    if not patient:
+        return
+    if not _patient_belongs_to_doctor(
+        patient, query_data.doctor_id, query_data.doctor_name
+    ):
+        raise HTTPException(
+            status_code=403, detail="Access Denied: Patient ownership mismatch."
+        )
 
 
 def extract_text_from_pdf(file_bytes: bytes) -> str:
@@ -398,56 +617,116 @@ def should_send_email(patient_email: str):
     return True, "first consultation"
 
 
-# ── AI response generator ──────────────────────────────────────────────────────
-
-_ADA_CITATION_RULES = """
-
-═══════════════════════════════════════════════════════════════
-INTELLIHEALTH EVIDENCE STANDARDS — MANDATORY IN EVERY RESPONSE
-═══════════════════════════════════════════════════════════════
-PRIMARY KNOWLEDGE BASE — ADA 2026 Standards of Care (Diabetes Care 2026;49):
-  • §14 — Children and Adolescents (S297–S320)
-  • §15 — Management of Diabetes in Pregnancy (S321–S338)
-  • §16 — Diabetes Care in the Hospital (S339–S355)
-
-EVIDENCE GRADING — tag every clinical recommendation with its grade:
-  [A] — High-quality RCTs or meta-analyses; strong evidence
-  [B] — Cohort/case-control studies; moderate evidence
-  [C] — Expert consensus; limited data
-  [E] — Expert opinion only
-
-CITATION RULES (strictly enforced):
-1. Cite ADA 2026 recommendation numbers inline:
-     "Per ADA 2026 Rec. 14.5 [A], CGM is recommended for all T1D children."
-     "ADA 2026 §16.5b [B] targets 100–180 mg/dL for non-critically ill inpatients."
-2. Supplement with peer-reviewed sources when ADA does not cover the topic:
-     - WHO Clinical Guidelines (with year)
-     - Harrison's Principles of Internal Medicine (21st ed., 2022)
-     - UpToDate (most recent version)
-     - High-impact RCTs/meta-analyses: NEJM, Lancet, JAMA, BMJ (DOI required)
-3. ALWAYS end with a ## References section — every cited source in full:
-     Format: Author/Organization (Year). Title. Journal/Publisher. DOI.
-4. Never fabricate references. Only cite real, verifiable literature.
-5. Never present expert opinion as established evidence — always label [E].
-6. If a recommendation number appears in the guideline context above, cite it.
-═══════════════════════════════════════════════════════════════"""
+# ── Session & Persistence Logic ──────────────────────────────────────────────
 
 
-# ── Learning journal helpers ───────────────────────────────────────────────────
+def _ensure_session_id(session_id: Optional[str]) -> str:
+    return session_id if session_id and session_id.strip() else str(uuid.uuid4())
+
+
+def _normalize_chat_history(
+    raw_history: Optional[List[Dict[str, Any]]],
+) -> List[Dict[str, str]]:
+    normalized: List[Dict[str, str]] = []
+    if not raw_history:
+        return normalized
+    for entry in raw_history:
+        if not isinstance(entry, dict):
+            continue
+        role = entry.get("role", "user")
+        if role not in ("user", "assistant"):
+            role = "assistant" if entry.get("response") else "user"
+        content = (
+            entry.get("content") or entry.get("query") or entry.get("response") or ""
+        )
+        if content:
+            normalized.append({"role": role, "content": str(content)})
+    return normalized
+
+
+def _trim_chat_history(
+    history: List[Dict[str, str]], max_messages: int = 12
+) -> List[Dict[str, str]]:
+    return history[-max_messages:]
+
+
+def _reconcile_history(
+    stored: List[Dict[str, str]], incoming: List[Dict[str, str]]
+) -> List[Dict[str, str]]:
+    if not stored:
+        return incoming
+    if not incoming:
+        return stored
+    return incoming if len(incoming) >= len(stored) else stored
+
+
+def _load_chat_session(session_id: str) -> List[Dict[str, str]]:
+    if chat_sessions_collection is None:
+        return []
+    doc = chat_sessions_collection.find_one({"session_id": session_id})
+    return doc.get("history", []) if doc else []
+
+
+def _save_chat_session(
+    session_id: str, history: List[Dict[str, str]], metadata: Dict[str, Any]
+):
+    if chat_sessions_collection is None:
+        return
+    timestamp = datetime.utcnow().isoformat()
+    chat_sessions_collection.update_one(
+        {"session_id": session_id},
+        {
+            "$set": {"history": history, "metadata": metadata, "updated_at": timestamp},
+            "$setOnInsert": {"created_at": timestamp},
+        },
+        upsert=True,
+    )
+
+
+# ── Learning & Adaptation Logic ──────────────────────────────────────────────
+
+
+def _extract_key_recs(text: str) -> str:
+    lines = text.split("\n")
+    recs = [
+        l.strip()
+        for l in lines
+        if l.strip().startswith(("- **First", "- **Second", "**Target", "Recommend"))
+    ]
+    return " | ".join(recs[:4]) if recs else text[:200]
+
+
+def _extract_ada_refs(text: str) -> list:
+    return list(
+        set(
+            re.findall(
+                r"ADA\s+2026\s+(?:Rec(?:ommendation)?\.?\s*|§)[\d\.]+[a-z]?", text
+            )
+        )
+    )
+
 
 def _retrieve_similar_cases(disease: str, query_type: str, limit: int = 3) -> str:
-    """Pull high-rated past interactions for the same condition to enrich context."""
     if learning_journal_collection is None:
         return ""
     try:
-        cursor = learning_journal_collection.find(
-            {
-                "disease": {"$regex": disease[:30], "$options": "i"},
-                "query_type": query_type,
-                "rating": {"$gte": 4},
-            },
-            {"response_snippet": 1, "key_recommendations": 1, "ada_refs": 1, "_id": 0},
-        ).sort("rating", -1).limit(limit)
+        cursor = (
+            learning_journal_collection.find(
+                {
+                    "disease": {"$regex": disease[:30], "$options": "i"},
+                    "query_type": query_type,
+                    "rating": {"$gte": 4},
+                },
+                {
+                    "response_snippet": 1,
+                    "key_recommendations": 1,
+                    "ada_refs": 1,
+                    "_id": 0,
+                },
+            )
+            .sort("rating", -1)
+            .limit(limit)
+        )
         docs = list(cursor)
         if not docs:
             return ""
@@ -457,13 +736,15 @@ def _retrieve_similar_cases(disease: str, query_type: str, limit: int = 3) -> st
                 f"[Case {i}] {doc.get('key_recommendations', '')} | "
                 f"ADA refs: {', '.join(doc.get('ada_refs', []))}"
             )
-        return "\n".join(parts)
+        # FIX 3: Cap past_cases_ctx to 1500 chars to protect response token budget
+        return "\n".join(parts)[:1500]
     except Exception:
         return ""
 
 
-def _save_interaction(query_data, response_content: str, ada_refs: list, model_used: str):
-    """Persist an AI interaction to the learning journal for future adaptation."""
+def _save_interaction(
+    query_data, response_content: str, ada_refs: list, model_used: str
+):
     if learning_journal_collection is None:
         return
     try:
@@ -487,71 +768,109 @@ def _save_interaction(query_data, response_content: str, ada_refs: list, model_u
         print(f"[Learning] Save failed: {e}")
 
 
-def _decode_jwt_token(token: str) -> Optional[Dict[str, Any]]:
+# ── ADA Guideline Context Builder ─────────────────────────────────────────────
+
+# Phrases that indicate the ADA engine found nothing useful.
+# If any of these appear in the returned context, we discard it entirely
+# rather than injecting a dead-end message that confuses the model.
+_ADA_FALLBACK_PHRASES = [
+    "do not explicitly address",
+    "no guideline",
+    "cannot be generated",
+    "not found in the guidelines",
+    "no relevant guideline",
+    "no ada guideline",
+    "guidelines do not cover",
+    "outside the scope",
+    "not covered by",
+]
+
+
+def _build_guideline_context(ada, patient_data: dict, clinical_q: str) -> tuple:
+    """
+    Calls ada.build_ada_prompt(), then:
+      1. Filters out dead-end fallback messages (FIX 4)
+      2. Caps the returned text at 4000 chars (FIX 5)
+    Returns (guideline_ctx_str, guideline_usage_dict)
+    """
+    if ada is None:
+        return "", {}
+
     try:
-        return jwt.decode(token, os.getenv("JWT_SECRET_KEY", "change-in-production"), algorithms=["HS256"])
-    except Exception:
-        return None
+        ada_prompt_content, guideline_usage = ada.build_ada_prompt(
+            patient_data, clinical_q
+        )
+    except Exception as e:
+        print(f"[ADA] build_ada_prompt failed: {e}")
+        return "", {}
 
+    if not ada_prompt_content or not ada_prompt_content.strip():
+        return "", {}
 
-def _apply_doctor_identity_from_request(query_data: ClinicalQuery, request: Request) -> None:
-    auth_header = request.headers.get("authorization") or request.headers.get("Authorization")
-    if not auth_header or not auth_header.lower().startswith("bearer "):
-        return
-    token = auth_header.split(" ", 1)[1].strip()
-    payload = _decode_jwt_token(token)
-    if not payload:
-        return
-    if not query_data.doctor_name and payload.get("name"):
-        query_data.doctor_name = payload.get("name")
-    if not query_data.doctor_id and payload.get("doctor_id"):
-        query_data.doctor_id = payload.get("doctor_id")
+    # Check for fallback / dead-end phrases
+    lower_content = ada_prompt_content.lower()
+    if any(phrase in lower_content for phrase in _ADA_FALLBACK_PHRASES):
+        print(
+            "[ADA] Guideline context contained a dead-end fallback phrase — "
+            "discarding to prevent model from echoing it. Model will reason from training knowledge."
+        )
+        return "", guideline_usage
 
-
-def _patient_belongs_to_doctor(patient: Optional[Dict[str, Any]], doctor_id: Optional[str], doctor_name: Optional[str] = None) -> bool:
-    if not isinstance(patient, dict):
-        return False
-
-    owner_id = patient.get("added_by_doctor_id") or patient.get("doctor_id") or ""
-    if isinstance(owner_id, str) and owner_id.strip() and doctor_id:
-        if owner_id.strip() == str(doctor_id).strip():
-            return True
-
-    owner_name = patient.get("added_by_doctor") or patient.get("doctor_name") or ""
-    if isinstance(owner_name, str) and owner_name.strip() and doctor_name:
-        return owner_name.strip().casefold() == str(doctor_name).strip().casefold()
-
-    return False
-
-
-def _require_patient_scope(query_data: ClinicalQuery, request: Request) -> None:
-    if not patients_collection or not query_data.patid:
-        return
-
-    _apply_doctor_identity_from_request(query_data, request)
-
-    patient = patients_collection.find_one({"patid": query_data.patid}, {"_id": 0})
-    if not patient:
-        return
-
-    if not _patient_belongs_to_doctor(patient, query_data.doctor_id, query_data.doctor_name):
-        raise HTTPException(
-            status_code=403,
-            detail="This patient record is outside your scope. I can only assist with patients you entered.",
+    # Hard-cap at 4000 chars to preserve token budget for the actual response
+    capped = ada_prompt_content[:4000]
+    if len(ada_prompt_content) > 4000:
+        print(
+            f"[ADA] Guideline context truncated from {len(ada_prompt_content)} → 4000 chars"
         )
 
-
-def _extract_key_recs(text: str) -> str:
-    """Extract a compact summary of management recommendations from AI response."""
-    lines = text.split("\n")
-    recs = [l.strip() for l in lines if l.strip().startswith(("- **First", "- **Second", "**Target", "Recommend"))]
-    return " | ".join(recs[:4]) if recs else text[:200]
+    return capped, guideline_usage
 
 
-def _extract_ada_refs(text: str) -> list:
-    """Pull all ADA recommendation numbers cited in a response."""
-    import re
-    return list(set(re.findall(r"ADA\s+2026\s+(?:Rec(?:ommendation)?\.?\s*|§)[\d\.]+[a-z]?", text)))
+# ── Evidence & Citation Rules (Embedded in Every Prompt) ─────────────────────
+
+_ADA_CITATION_RULES = """
+═══════════════════════════════════════════════════════════════
+INTELLIHEALTH EVIDENCE STANDARDS — MANDATORY IN EVERY RESPONSE
+═══════════════════════════════════════════════════════════════
+PRIMARY KNOWLEDGE BASE — ADA 2026 Standards of Care (Diabetes Care 2026;49):
+  • §14 — Children and Adolescents (S297–S320)
+  • §15 — Management of Diabetes in Pregnancy (S321–S338)
+  • §16 — Diabetes Care in the Hospital (S339–S355)
+
+EVIDENCE GRADING — tag every clinical recommendation:
+  [A] High-quality RCTs or meta-analyses; strong evidence
+  [B] Cohort/case-control studies; moderate evidence
+  [C] Expert consensus; limited data
+  [E] Expert opinion only
+
+CITATION RULES (strictly enforced):
+1. Cite ADA 2026 recommendation numbers inline:
+     "Per ADA 2026 Rec. 14.5 [A], CGM is recommended for all T1D children."
+2. Supplement with: WHO Guidelines (year), Harrison's 21st ed., UpToDate,
+   high-impact RCTs from NEJM/Lancet/JAMA/BMJ (DOI required).
+3. ALWAYS end with ## References — every cited source in full bibliographic format.
+4. Never fabricate references. Never present opinion as established evidence [E].
+═══════════════════════════════════════════════════════════════
+"""
+
+# ── DiabAssist Persona Directive ─────────────────────────────────────────────
+
+_DIABASSIST_DIRECTIVE = """You are DiabAssist, a specialized AI clinical assistant for qualified healthcare professionals.
+
+SCOPE: You answer only questions about this patient's medical condition, diagnosis, medications, risk factors, investigations, treatment options, and clinical management.
+
+OFF-TOPIC RESPONSE: If the query is entirely unrelated to this patient's healthcare, respond only with:
+"I am not programmed for this. Please ask a health-related question about the patient."
+
+RESPONSE COMPLETENESS REQUIREMENT (CRITICAL):
+- You MUST complete ALL sections listed in the structure below.
+- Do NOT stop early, do NOT summarize sections as "see above", do NOT truncate.
+- If a section has limited data, state what is known and note the data gap explicitly.
+- A response that ends before the ## References section is INCOMPLETE and unacceptable.
+"""
+
+
+# ── AI Response Generator (v4.1 — Full Detail) ───────────────────────────────
 
 
 def generate_advanced_ai_response(query_data: ClinicalQuery) -> Dict[str, Any]:
@@ -566,94 +885,98 @@ def generate_advanced_ai_response(query_data: ClinicalQuery) -> Dict[str, Any]:
     disease = query_data.disease or "Unknown"
     age_text = f"{query_data.age} years" if query_data.age else "Unknown"
 
-    # ── Patient context ───────────────────────────────────────────────────────
-    patient_ctx = f"""PATIENT RECORD:
-  Name:                {query_data.pname or "Unknown"}
-  Age:                 {age_text}
-  Gender:              {query_data.gender or "Not specified"}
-  Known Condition:     {disease}
-  Current Medication:  {query_data.medication or "None"}
-  Blood Pressure:      {query_data.bp or "Not recorded"}
-  Pulse:               {query_data.pulse or "Not recorded"}
-  BMI:                 {query_data.bmi or "Not recorded"}
-  Presenting Complaint:{query_data.presenting_complaint or "Not specified"}
-  Family History:      {query_data.family_history or "Not provided"}
-  Social History:      {query_data.social_history or "Not provided"}
-  Allergies:           {query_data.allergies or "None known"}"""
+    # ── Patient context block ─────────────────────────────────────────────────
+    patient_ctx = f"""═══════════════════════════════════════════
+PATIENT RECORD
+═══════════════════════════════════════════
+Name:                  {query_data.pname or "Unknown"}
+Age:                   {age_text}
+Gender:                {query_data.gender or "Not specified"}
+Known Condition:       {disease}
+Current Medication:    {query_data.medication or "None documented"}
+Blood Pressure:        {query_data.bp or "Not recorded"}
+Pulse:                 {query_data.pulse or "Not recorded"}
+BMI:                   {query_data.bmi or "Not recorded"}
+Presenting Complaint:  {query_data.presenting_complaint or "Not specified"}
+Family History:        {query_data.family_history or "Not provided"}
+Social History:        {query_data.social_history or "Not provided"}
+Allergies:             {query_data.allergies or "None known"}
+═══════════════════════════════════════════"""
 
-    # ── ADA guideline context ─────────────────────────────────────────────────
-    if not guideline_load_status["loaded"]:
-        guidelines_loaded = False
-        ada_stats = {"guideline_loaded": False, "total_recommendations": 0, "sample_cases_loaded": 0}
-    else:
-        ada_stats = ada.get_guideline_stats()
-        guidelines_loaded = ada_stats["guideline_loaded"]
-
+    # ── Guideline context (filtered + capped) ─────────────────────────────────
+    guidelines_loaded = guideline_load_status["loaded"]
     guideline_ctx = ""
     guideline_usage = {}
-    if guidelines_loaded:
+
+    if guidelines_loaded and ada:
         patient_data_for_ctx = {
             "disease": disease,
             "age": query_data.age,
             "presenting_complaint": query_data.presenting_complaint or "",
         }
         clinical_q = custom_query or f"{query_type} for {disease}"
-        guideline_ctx = ada.build_context_for_ai(patient_data_for_ctx, clinical_q, max_text_chars=6000)
-        guideline_usage = {
-            "sources": list(ada.sources.keys()),
-            "total_recommendations": ada_stats["total_recommendations"],
-            "sample_cases": ada_stats["sample_cases_loaded"],
-        }
+        guideline_ctx, guideline_usage = _build_guideline_context(
+            ada, patient_data_for_ctx, clinical_q
+        )
 
     # ── Uploaded file context ─────────────────────────────────────────────────
     uploaded_ctx = ""
     if query_data.pdf_text and query_data.pdf_text.strip():
-        uploaded_ctx += f"\n\nUPLOADED MEDICAL PDF ({query_data.pdf_name or 'report'}):\n{query_data.pdf_text[:4000]}"
+        uploaded_ctx += (
+            f"\n\n═══ UPLOADED MEDICAL DOCUMENT: {query_data.pdf_name or 'report'} ═══\n"
+            f"{query_data.pdf_text[:4000]}\n═══ END OF DOCUMENT ═══"
+        )
     if query_data.image_data:
-        uploaded_ctx += f"\n\nMEDICAL IMAGE ({query_data.image_name or 'image'}): Provided for analysis."
+        uploaded_ctx += (
+            f"\n\nMEDICAL IMAGE PROVIDED: {query_data.image_name or 'image'} — "
+            "describe and interpret any visible findings in your assessment."
+        )
 
     has_uploads = bool(query_data.pdf_text or query_data.image_data)
     analysis_focus = (
-        "Analyze PRIMARILY from the UPLOADED DATA. Patient record is supporting context only. "
-        "Consider ALL conditions visible — not just the recorded disease field."
+        "PRIORITY: Analyse the UPLOADED DOCUMENT/IMAGE first. "
+        "The patient record is supporting context. "
+        "Consider ALL conditions visible, not only the recorded disease field."
         if has_uploads
-        else "Analyze based on the patient record and presenting complaint."
+        else "Analyse based on the patient record and presenting complaint."
     )
 
-    # ── Learning journal context (similar validated past cases) ───────────────
+    # ── Prior case context (capped at 1500 chars) ────────────────────────────
     past_cases_ctx = _retrieve_similar_cases(disease, query_type)
 
-    diabassist_directive = """You are DiabAssist, a specialized clinical AI assistant for healthcare professionals.
-You will only answer questions about the current patient, their medical condition, diagnostics, medications, risk factors, treatment options, and clinical care.
-Always interpret the physician's query as a patient-specific clinical request.
-Adapt your response style to the precise question: provide concise, focused answers when the query is brief or asks for a summary, and provide clear, thorough explanations when the query asks for understanding or detail.
-Avoid returning the same canned response structure for every query; tailor the content, tone, and length to the medical need and the form of the question.
-Keep responses within a safe token limit by using clear, direct language and avoiding unnecessary repetition.
-Focus strictly on the patient's health status, diabetes management, and directly relevant medical reasoning.
-Do not answer questions about geography, history, politics, entertainment, sports, technology, programming, mathematics, current events, general knowledge, personal opinions, or any topic unrelated to this patient's healthcare.
-If the query is NOT related to the current patient's healthcare, respond exactly:
-"I am not programmed for this. Please ask a health-related question about the patient."
-"""
+    # ── Guideline section header for system prompt ────────────────────────────
+    guideline_section = ""
+    if guideline_ctx:
+        guideline_section = (
+            f"\n{'═' * 60}\n"
+            f"ADA 2026 STANDARDS OF CARE — LOADED GUIDELINE CONTEXT\n"
+            f"{'═' * 60}\n"
+            f"{guideline_ctx}\n"
+            f"{'═' * 60}\n"
+        )
+    else:
+        guideline_section = (
+            f"\n{'═' * 60}\n"
+            "ADA 2026 STANDARDS OF CARE — USING EMBEDDED TRAINING KNOWLEDGE\n"
+            "(No additional guideline file context available for this query. "
+            "Reason from your comprehensive ADA 2026 training knowledge and cite "
+            "recommendation numbers as known.)\n"
+            f"{'═' * 60}\n"
+        )
 
-    # ── Build system prompt ───────────────────────────────────────────────────
+    past_cases_section = f"\n{past_cases_ctx}\n" if past_cases_ctx else ""
+
+    # ── Build system prompt based on conversation type ────────────────────────
     if conv_type == "general" or query_type == "Generic":
-        system_prompt = f"""{diabassist_directive}
+        system_prompt = f"""{_DIABASSIST_DIRECTIVE}
 
 You are IntelliHealth, an AI clinical reasoning system presenting as Gemma, supporting Dr. {doctor_name}.
-You operate as a continuously learning, evidence-driven assistant that applies structured clinical reasoning and ADA 2026 guidelines.
-Use prior validated clinical interactions and rated feedback to refine your reasoning and improve future recommendations.
-Always adapt your response format and depth to the specific clinical query; do not return the same type of response for every question.
-Keep answers concise when the query warrants brevity, and expand with proper explanation when the query demands it.
+You apply structured clinical reasoning and ADA 2026 guidelines, adapting response length to query complexity.
 
 {patient_ctx}
 {uploaded_ctx}
-
-{"=" * 60}
-ADA 2026 KNOWLEDGE BASE
-{"=" * 60}
-{guideline_ctx}
-{"=" * 60}
-{past_cases_ctx}
+{guideline_section}
+{past_cases_section}
 
 RESPONSE REQUIREMENTS:
 - Apply structured clinical reasoning: gather findings → identify abnormalities → rank differentials → recommend investigations → evidence-based management.
@@ -661,109 +984,146 @@ RESPONSE REQUIREMENTS:
 - Be explicit about confidence level and any limitations in the data.
 - Flag when urgent specialist referral is needed.
 - NEVER present speculation as established fact.
+- COMPLETE the full response including References before stopping.
 {_ADA_CITATION_RULES}"""
 
     else:
-        system_prompt = f"""{diabassist_directive}
+        system_prompt = f"""{_DIABASSIST_DIRECTIVE}
 
 You are IntelliHealth, a continuously learning AI Clinical Decision Support System presenting as Gemma, assisting Dr. {doctor_name}.
 
-CORE MISSION: Apply expert-level clinical reasoning to generate evidence-graded, reference-backed recommendations that improve with each interaction.
-Use prior validated clinical interactions and rated feedback to refine your reasoning and improve future recommendations.
-Always adapt the response style to the physician's query: respond succinctly for focused requests, and provide more complete explanations for questions requiring detail.
-Keep the answer within safe token limits and avoid repeating the same template for every medical query.
+CORE MISSION: Generate expert-level, evidence-graded, fully referenced clinical consultation reports. Every section below is MANDATORY. Write each section in full. Do not abbreviate, skip, or summarise sections.
 
 ANALYSIS DIRECTIVE: {analysis_focus}
 
 {patient_ctx}
 {uploaded_ctx}
+{guideline_section}
+{past_cases_section}
 
-{"=" * 60}
-ADA 2026 STANDARDS OF CARE — PRIMARY EVIDENCE BASE
-{"=" * 60}
-{guideline_ctx}
-{"=" * 60}
-{past_cases_ctx}
-
-MANDATORY RESPONSE STRUCTURE — output each section in full:
+══════════════════════════════════════════════════════════════
+MANDATORY RESPONSE STRUCTURE — COMPLETE ALL 7 SECTIONS IN FULL
+══════════════════════════════════════════════════════════════
 
 ## 1. Clinical Reasoning & Assessment
-Systematically gather key findings → identify abnormalities → form clinical impression.
-State your reasoning chain explicitly. Cite ADA 2026 recommendation numbers inline with evidence grade [A/B/C/E].
-Example: "Per ADA 2026 Rec. 14.3 [A], HbA1c target <7% is recommended for most children."
+Write a thorough narrative clinical assessment of this patient:
+- Summarise all available findings systematically (vitals, history, medications, complaints)
+- Identify abnormalities and their clinical significance
+- Formulate your overall clinical impression with explicit reasoning
+- Cite ADA 2026 recommendation numbers inline with evidence grade [A/B/C/E] throughout
+- Minimum length: 4–6 detailed paragraphs. Do NOT condense into bullet points alone.
 
 ## 2. Differential Diagnosis (ranked by probability)
-List 3–5 diagnoses. For each state:
-  - Probability: High / Moderate / Low
-  - Supporting evidence from this patient's data
-  - Discriminating investigations
+List 3–5 diagnoses in order of probability. For EACH provide:
+  • Probability: High / Moderate / Low — and why
+  • Supporting evidence from THIS patient's specific data
+  • Features that argue AGAINST this diagnosis
+  • Discriminating investigation(s) that would confirm or exclude it
 
 ## 3. Recommended Investigations
-Specific labs, imaging, and tests with ADA 2026 target values where applicable.
-State evidence grade for each test ordered.
+For each investigation specify:
+  • Test name and rationale
+  • ADA 2026 target value or normal range where applicable
+  • Evidence grade [A/B/C/E]
+  • How the result will change management
+Include: labs (HbA1c, FPG, lipids, renal panel, urine ACR), imaging, functional tests as appropriate.
 
 ## 4. Evidence-Based Management Plan
-- **First-line [evidence grade]:** drug/intervention + dose + target
-- **Second-line alternatives [evidence grade]:**
-- **Medication monitoring:**
-- **Contraindications given this patient's profile:**
+Write a comprehensive, patient-specific management plan:
+  - **First-line therapy [evidence grade]:** drug name + dose + route + frequency + target endpoint
+  - **Second-line alternatives [evidence grade]:** options with dosing and switching criteria
+  - **Combination therapy considerations:** when and how to escalate
+  - **Non-pharmacological interventions:** diet, exercise, weight targets, self-monitoring
+  - **Medication monitoring:** what to check, how often, and at what threshold to act
+  - **Contraindications for THIS patient:** based on their specific allergies, comorbidities, vitals
 Cite ADA 2026 recommendation number for EVERY pharmacological recommendation.
 
 ## 5. Monitoring & Follow-up Schedule
-Specific parameters, frequency, and numerical targets from ADA 2026 (HbA1c, BP, lipids, renal function).
+Provide a concrete, time-structured follow-up plan:
+  - Week 2, Month 1, Month 3, Month 6, Annual — what to check at each visit
+  - Specific numerical targets: HbA1c, BP, LDL, BMI, eGFR, UACR per ADA 2026
+  - Self-monitoring instructions for the patient (SMBG/CGM frequency, BP log)
+  - Criteria for stepping up therapy at each review
 
 ## 6. Red Flags & Urgent Escalation Criteria
-Specific signs/values requiring emergency intervention or immediate specialist referral.
+List specific clinical signs, lab values, or symptoms that require:
+  - Emergency department referral (immediate)
+  - Same-day specialist review (urgent)
+  - Routine specialist referral (non-urgent)
+Give explicit numerical thresholds (e.g., glucose >400 mg/dL, K+ <3.0, eGFR <30).
 
 ## 7. Confidence & Limitations
-State your confidence level (High / Moderate / Low) and identify any data gaps, uncertainties, or alternative interpretations that the treating physician should consider.
+  - Overall confidence level: High / Moderate / Low — with justification
+  - Data gaps in this patient's record that limit certainty
+  - Alternative clinical interpretations the treating physician should consider
+  - Recommended additional history or examination findings to improve diagnostic accuracy
 
 ## References
-Every source cited above in full bibliographic format:
-Author/Organization (Year). Title. Journal. Volume(Issue):Pages. DOI.
+List EVERY source cited above in full bibliographic format:
+  Author/Organization (Year). Title. Journal. Volume(Issue):Pages. DOI or URL.
+Minimum 4 references. Include ADA 2026, relevant RCTs, and any guideline cited.
 
+══════════════════════════════════════════════════════════════
 ⚠️ All clinical decisions remain the sole responsibility of the treating physician.
 {_ADA_CITATION_RULES}"""
 
-    # ── User message by query type ────────────────────────────────────────────
+    # ── Construct user message ────────────────────────────────────────────────
     if custom_query and custom_query.strip():
-        user_message = custom_query
+        user_message = (
+            f"{custom_query}\n\n"
+            "[Respond with a complete, detailed clinical consultation covering all 7 mandatory sections. "
+            "Do not truncate. Complete the ## References section before stopping.]"
+        )
     elif query_type == "Explain":
         user_message = (
-            f"Apply structured clinical reasoning to assess this patient's condition ({disease}). "
-            f"Generate ranked differentials, explain the clinical picture, and cite ADA 2026 guidelines."
+            f"Apply structured clinical reasoning to fully assess this patient's condition ({disease}). "
+            f"Generate ranked differentials, explain the complete clinical picture with pathophysiology, "
+            f"and cite ADA 2026 guidelines throughout all 7 sections. "
+            f"Do not truncate — complete the full response including References."
         )
     elif query_type == "Treatment":
         user_message = (
-            f"Propose a complete evidence-graded treatment plan for this patient with {disease}. "
-            f"Include first-line and alternative pharmacological options with dosing, targets, and ADA 2026 citations."
+            f"Propose a complete, evidence-graded treatment plan for this patient with {disease}. "
+            f"Include first-line and alternative pharmacological options with specific dosing, "
+            f"targets, monitoring, contraindications, and non-pharmacological interventions. "
+            f"Cite ADA 2026 recommendation numbers for every drug. "
+            f"Complete all 7 sections including References."
         )
     elif query_type == "Medication":
         user_message = (
-            f"Review this patient's current medication ({query_data.medication or 'current regimen'}) "
-            f"and recommend evidence-based adjustments with specific dosing, monitoring parameters, and ADA 2026 citations."
+            f"Conduct a thorough medication review for this patient "
+            f"(current regimen: {query_data.medication or 'as documented'}). "
+            f"Assess appropriateness, identify drug interactions or contraindications, "
+            f"recommend evidence-based adjustments with specific dosing and monitoring parameters. "
+            f"Cite ADA 2026 guidelines. Complete all 7 sections including References."
         )
     elif query_type == "Lifestyle":
         user_message = (
-            f"Provide an evidence-based lifestyle medicine plan for this patient with {disease}. "
-            f"Cover nutrition, physical activity, weight targets, and behavioural interventions with ADA 2026 citations."
+            f"Provide a comprehensive, evidence-based lifestyle medicine plan for this patient with {disease}. "
+            f"Cover medical nutrition therapy, structured physical activity, weight management targets, "
+            f"smoking/alcohol cessation if relevant, sleep hygiene, and psychosocial support. "
+            f"Include specific, quantified targets from ADA 2026. "
+            f"Complete all 7 sections including References."
         )
     else:
-        user_message = f"Perform a complete clinical analysis for this patient with {disease}, applying structured reasoning and ADA 2026 evidence-based guidelines."
+        user_message = (
+            f"Perform a complete clinical consultation for this patient with {disease}. "
+            f"Apply structured reasoning, ADA 2026 evidence-based guidelines, and provide "
+            f"actionable recommendations with explicit citations. "
+            f"Complete all 7 mandatory sections including References. Do not truncate."
+        )
 
-    session_id = None
-    history_messages: List[Dict[str, str]] = []
-    if query_data.session_id or query_data.chat_history:
-        session_id = _ensure_session_id(query_data.session_id)
-        incoming_history = _normalize_chat_history(query_data.chat_history)
-        stored_history = _load_chat_session(session_id) if query_data.session_id else []
-        session_history = _reconcile_history(stored_history, incoming_history)
-        session_history = _trim_chat_history(session_history, max_messages=12)
-        history_messages = [
-            {"role": h["role"], "content": h["content"]}
-            for h in session_history
-            if h.get("role") and h.get("content")
-        ]
+    # ── Session/history management ────────────────────────────────────────────
+    session_id = _ensure_session_id(query_data.session_id)
+    incoming_history = _normalize_chat_history(query_data.chat_history)
+    stored_history = _load_chat_session(session_id) if query_data.session_id else []
+    session_history = _reconcile_history(stored_history, incoming_history)
+    session_history = _trim_chat_history(session_history, max_messages=12)
+    history_messages = [
+        {"role": h["role"], "content": h["content"]}
+        for h in session_history
+        if h.get("role") and h.get("content")
+    ]
 
     messages = [
         {"role": "system", "content": system_prompt},
@@ -771,17 +1131,25 @@ Author/Organization (Year). Title. Journal. Volume(Issue):Pages. DOI.
         {"role": "user", "content": user_message},
     ]
 
+    # ── Call Groq ─────────────────────────────────────────────────────────────
     try:
-        chat_completion, used_model = _call_groq_with_model(messages)
+        chat_completion, used_model = _call_groq_with_model(
+            messages,
+            max_tokens=_MAX_RESPONSE_TOKENS,  # 8192
+            temperature=0.4,
+        )
         response_content = chat_completion.choices[0].message.content
 
-        # ── Persist to learning journal ────────────────────────────────────────
         ada_refs = _extract_ada_refs(response_content)
         _save_interaction(query_data, response_content, ada_refs, used_model)
 
         if session_id:
             save_history = history_messages.copy()
-            if not save_history or save_history[-1].get("role") != "user" or save_history[-1].get("content") != user_message:
+            if (
+                not save_history
+                or save_history[-1].get("role") != "user"
+                or save_history[-1].get("content") != user_message
+            ):
                 save_history.append({"role": "user", "content": user_message})
             save_history.append({"role": "assistant", "content": response_content})
             _save_chat_session(
@@ -805,6 +1173,7 @@ Author/Organization (Year). Title. Journal. Volume(Issue):Pages. DOI.
         if session_id:
             result["session_id"] = session_id
         return result
+
     except Exception as e:
         print(f"[AI] Groq API error: {e}")
         message = str(e)
@@ -868,13 +1237,11 @@ def generate_report_pdf(req: ExportReportRequest) -> bytes:
 
     story = []
 
-    # Colors
     PURPLE = colors.HexColor("#7c3aed")
     LIGHT_PURPLE = colors.HexColor("#f5f3ff")
     WHITE = colors.HexColor("#ffffff")
     GRAY = colors.HexColor("#e5e7eb")
 
-    # Title
     story.append(Paragraph("IntelliHealth AI Clinical Report", styles["Title"]))
     story.append(Spacer(1, 5 * mm))
 
@@ -908,7 +1275,6 @@ def generate_report_pdf(req: ExportReportRequest) -> bytes:
 
     p = req.patient
 
-    # ── Doctor info ────────────────────────────────────────────────────────────
     story.extend(section_header("Attending Physician"))
     doctor_data = [
         info_row("Doctor Name", req.doctor_name or "—"),
@@ -931,13 +1297,13 @@ def generate_report_pdf(req: ExportReportRequest) -> bytes:
     story.append(doc_table)
     story.append(Spacer(1, 5 * mm))
 
-    # ── Patient info ────────────────────────────────────────────────────────────
     story.extend(section_header("Patient Information"))
     patient_data = [
         info_row("Patient Name", p.get("pname", "")),
         info_row("Patient ID", p.get("patid", "")),
         info_row(
-            "Date of Birth / Age", f"{p.get('dob', '')}  |  {p.get('age', '')} years"
+            "Date of Birth / Age",
+            f"{p.get('dob', '')}  |  {p.get('age', '')} years",
         ),
         info_row("Gender", p.get("gender", "")),
         info_row("Phone Number", p.get("phone_number", "")),
@@ -966,7 +1332,6 @@ def generate_report_pdf(req: ExportReportRequest) -> bytes:
     story.append(pat_table)
     story.append(Spacer(1, 5 * mm))
 
-    # ── Consultation history ───────────────────────────────────────────────────
     if req.chat_history:
         story.extend(section_header("Consultation Summary"))
         ai_style = ParagraphStyle(
@@ -990,7 +1355,6 @@ def generate_report_pdf(req: ExportReportRequest) -> bytes:
             role = msg.get("role", "")
             content = msg.get("content", "")
             query_type = msg.get("query_type", "")
-            ts = msg.get("timestamp", "")
 
             if role == "user":
                 label = f"[Q{i}] Physician Query" + (
@@ -1001,13 +1365,11 @@ def generate_report_pdf(req: ExportReportRequest) -> bytes:
             else:
                 label = f"[A{i}] AI Clinical Response"
                 story.append(Paragraph(label, q_style))
-                # Strip markdown for PDF
                 clean = content.replace("**", "").replace("##", "").replace("*", "")
                 story.append(Paragraph(clean[:2000], ai_style))
 
             story.append(Spacer(1, 2 * mm))
 
-    # ── Disclaimer ────────────────────────────────────────────────────────────
     story.append(Spacer(1, 5 * mm))
     story.append(HRFlowable(width="100%", thickness=0.5, color=GRAY))
     story.append(Spacer(1, 2 * mm))
@@ -1030,36 +1392,55 @@ def generate_report_pdf(req: ExportReportRequest) -> bytes:
 
 # ── API Endpoints ──────────────────────────────────────────────────────────────
 
+api_router = APIRouter(prefix="/api")
+
 
 @api_router.get("/healthz")
 @api_router.get("/health")
 async def health():
     db_status, db_msg = "disconnected", "Not connected"
     try:
-        if _mongo:
+        if _mongo is not None:
             _mongo.admin.command("ping")
             db_status, db_msg = "connected", f"Connected to {db_name}"
     except Exception as e:
         db_status, db_msg = "error", str(e)
+
+    ada_engine = get_ada_engine()
+    ada_stats = (
+        ada_engine.get_guideline_stats()
+        if ada_engine
+        else {"guideline_loaded": False, "details": "ADA Engine not initialized"}
+    )
+
     return {
         "status": "healthy"
-        if db_status == "connected" and guideline_load_status["loaded"]
+        if db_status == "connected" and ada_stats["guideline_loaded"]
         else "degraded",
         "database": {"status": db_status, "message": db_msg, "name": db_name},
         "groq_api": "configured" if groq_client else "not configured",
-        "model": groq_model,
-        "guidelines": guideline_load_status,
+        "model": groq_model_primary,
+        "max_response_tokens": _MAX_RESPONSE_TOKENS,
+        "guidelines": ada_stats,
         "timestamp": datetime.utcnow().isoformat(),
     }
 
 
 @api_router.get("/model")
 async def model_info():
+    ada_engine = get_ada_engine()
+    ada_stats = (
+        ada_engine.get_guideline_stats()
+        if ada_engine
+        else {"guideline_loaded": False, "details": "ADA Engine not initialized"}
+    )
     return {
         "groq_api": "configured" if groq_client else "not configured",
-        "model": groq_model,
-        "model_display": "Gemma persona (llama-3.1-8b-instant)",
-        "guidelines": guideline_load_status,
+        "model": groq_model_primary,
+        "model_display": "Gemma persona (llama-3.3-70b-versatile)",
+        "fallback_models": groq_model_fallbacks,
+        "max_response_tokens": _MAX_RESPONSE_TOKENS,
+        "guidelines": ada_stats,
         "timestamp": datetime.utcnow().isoformat(),
     }
 
@@ -1081,6 +1462,7 @@ async def get_clinical_analysis(
 
     _apply_doctor_identity_from_request(query_data, request)
     _require_patient_scope(query_data, request)
+
     if query_data.custom_query and query_data.custom_query.strip():
         if not _is_medical_query(query_data.custom_query):
             return {
@@ -1117,7 +1499,7 @@ async def create_session():
 @api_router.get("/session/{session_id}")
 async def load_session(session_id: str):
     session_history = _load_chat_session(session_id)
-    if session_history is None:
+    if not session_history:
         raise HTTPException(status_code=404, detail="Session not found")
     return {"success": True, "session_id": session_id, "history": session_history}
 
@@ -1127,7 +1509,10 @@ async def save_session(session_id: str, body: Dict[str, Any]):
     history = body.get("history")
     metadata = body.get("metadata", {})
     if history is None or not isinstance(history, list):
-        raise HTTPException(status_code=400, detail="Session history must be provided as a list")
+        raise HTTPException(
+            status_code=400,
+            detail="Session history must be provided as a list",
+        )
     normalized_history = _normalize_chat_history(history)
     _save_chat_session(session_id, normalized_history, metadata)
     return {"success": True, "session_id": session_id}
@@ -1135,8 +1520,9 @@ async def save_session(session_id: str, body: Dict[str, Any]):
 
 @api_router.post("/export-report")
 async def export_report(req: ExportReportRequest, request: Request):
-    """Generate and download a professional PDF patient consultation report."""
-    auth_header = request.headers.get("authorization") or request.headers.get("Authorization")
+    auth_header = request.headers.get("authorization") or request.headers.get(
+        "Authorization"
+    )
     if auth_header and auth_header.lower().startswith("bearer "):
         token = auth_header.split(" ", 1)[1].strip()
         payload = _decode_jwt_token(token)
@@ -1156,10 +1542,15 @@ async def export_report(req: ExportReportRequest, request: Request):
                 doctor_name = payload.get("name")
 
         patid = req.patient.get("patid") if isinstance(req.patient, dict) else None
-        if patid and patients_collection:
+        if patid and patients_collection is not None:
             patient_doc = patients_collection.find_one({"patid": patid}, {"_id": 0})
-            if not patient_doc or not _patient_belongs_to_doctor(patient_doc, doctor_id, doctor_name):
-                raise HTTPException(status_code=403, detail="This patient record is outside your scope and cannot be exported.")
+            if not patient_doc or not _patient_belongs_to_doctor(
+                patient_doc, doctor_id, doctor_name
+            ):
+                raise HTTPException(
+                    status_code=403,
+                    detail="You are not this patient's doctor. Please connect only to your patients.",
+                )
 
         pdf_bytes = generate_report_pdf(req)
         patient_name = req.patient.get("pname", "Patient").replace(" ", "_")
@@ -1170,6 +1561,8 @@ async def export_report(req: ExportReportRequest, request: Request):
             media_type="application/pdf",
             headers={"Content-Disposition": f"attachment; filename={filename}"},
         )
+    except HTTPException:
+        raise
     except Exception as e:
         import traceback
 
@@ -1224,7 +1617,6 @@ async def upload_guideline(file: UploadFile = File(...), source_name: str = "ADA
         )
     ada = get_ada_engine()
     ada.set_guideline_content(text, source_name)
-    # Update global status after successful upload of a new guideline
     global guideline_load_status
     ada_stats = ada.get_guideline_stats()
     guideline_load_status["loaded"] = ada_stats["guideline_loaded"]
@@ -1257,7 +1649,6 @@ async def upload_additional_guideline(
         raise HTTPException(status_code=400, detail="Could not extract text")
     ada = get_ada_engine()
     result = ada.add_guideline_source(source_name, text, source_type)
-    # Update global status after successful upload of an additional guideline
     global guideline_load_status
     ada_stats = ada.get_guideline_stats()
     guideline_load_status["loaded"] = ada_stats["guideline_loaded"]
@@ -1273,6 +1664,39 @@ async def upload_additional_guideline(
     }
 
 
+@api_router.get("/guideline-pdfs")
+async def list_guideline_pdfs():
+    pdf_files = []
+    if os.path.isdir(_PROJECT_ROOT):
+        for entry in sorted(os.scandir(_PROJECT_ROOT), key=lambda item: item.name.lower()):
+            if entry.is_file() and entry.name.lower().endswith(".pdf"):
+                stat = entry.stat()
+                pdf_files.append(
+                    {
+                        "name": entry.name,
+                        "size": stat.st_size,
+                        "download_url": f"/api/download-guideline-pdf/{entry.name}",
+                    }
+                )
+
+    return {"success": True, "files": pdf_files}
+
+
+@api_router.get("/download-guideline-pdf/{filename}")
+async def download_guideline_pdf(filename: str):
+    safe_name = os.path.basename(filename)
+    file_path = os.path.join(_PROJECT_ROOT, safe_name)
+
+    if not safe_name.lower().endswith(".pdf") or not os.path.isfile(file_path):
+        raise HTTPException(status_code=404, detail="PDF not found")
+
+    return FileResponse(
+        file_path,
+        media_type="application/pdf",
+        filename=safe_name,
+    )
+
+
 @api_router.get("/list-guidelines")
 @api_router.post("/list-guidelines")
 async def list_guidelines():
@@ -1281,18 +1705,8 @@ async def list_guidelines():
     return {"success": True, "stats": stats, "load_status": guideline_load_status}
 
 
-class FeedbackRequest(BaseModel):
-    interaction_id: Optional[str] = ""
-    disease: str
-    query_type: str
-    rating: int
-    doctor_feedback: Optional[str] = ""
-    correction: Optional[str] = ""
-
-
 @api_router.post("/feedback")
 async def submit_feedback(req: FeedbackRequest):
-    """Doctors rate AI responses 1–5 and optionally provide corrections for model learning."""
     if req.rating < 1 or req.rating > 5:
         raise HTTPException(status_code=400, detail="Rating must be 1–5")
     if learning_journal_collection is None:
@@ -1306,6 +1720,7 @@ async def submit_feedback(req: FeedbackRequest):
     }
     if req.interaction_id:
         from bson import ObjectId
+
         try:
             learning_journal_collection.update_one(
                 {"_id": ObjectId(req.interaction_id)}, {"$set": update}
@@ -1320,16 +1735,18 @@ async def submit_feedback(req: FeedbackRequest):
             "rating": req.rating,
             "doctor_feedback": req.doctor_feedback or "",
             "correction": req.correction or "",
-            "model": groq_model,
+            "model": groq_model_primary,
             "created_at": datetime.utcnow().isoformat(),
         }
     )
-    return {"success": True, "message": "Feedback recorded. Thank you — this improves future recommendations."}
+    return {
+        "success": True,
+        "message": "Feedback recorded. Thank you — this improves future recommendations.",
+    }
 
 
 @api_router.get("/learning-stats")
 async def learning_stats():
-    """Return learning journal statistics showing model improvement over time."""
     if learning_journal_collection is None:
         return {"success": False, "error": "Learning journal not connected"}
     try:
@@ -1337,22 +1754,48 @@ async def learning_stats():
         rated = learning_journal_collection.count_documents({"rating": {"$ne": None}})
         pipeline = [
             {"$match": {"rating": {"$ne": None}}},
-            {"$group": {"_id": None, "avg": {"$avg": "$rating"}, "count": {"$sum": 1}}},
+            {
+                "$group": {
+                    "_id": None,
+                    "avg": {"$avg": "$rating"},
+                    "count": {"$sum": 1},
+                }
+            },
         ]
         avg_result = list(learning_journal_collection.aggregate(pipeline))
         avg_rating = round(avg_result[0]["avg"], 2) if avg_result else None
 
-        by_condition = list(learning_journal_collection.aggregate([
-            {"$match": {"rating": {"$gte": 4}}},
-            {"$group": {"_id": "$disease", "count": {"$sum": 1}, "avg_rating": {"$avg": "$rating"}}},
-            {"$sort": {"count": -1}},
-            {"$limit": 10},
-        ]))
+        by_condition = list(
+            learning_journal_collection.aggregate(
+                [
+                    {"$match": {"rating": {"$gte": 4}}},
+                    {
+                        "$group": {
+                            "_id": "$disease",
+                            "count": {"$sum": 1},
+                            "avg_rating": {"$avg": "$rating"},
+                        }
+                    },
+                    {"$sort": {"count": -1}},
+                    {"$limit": 10},
+                ]
+            )
+        )
 
-        corrections = list(learning_journal_collection.find(
-            {"correction": {"$ne": ""}},
-            {"disease": 1, "query_type": 1, "correction": 1, "rating": 1, "_id": 0}
-        ).sort("feedback_at", -1).limit(5))
+        corrections = list(
+            learning_journal_collection.find(
+                {"correction": {"$ne": ""}},
+                {
+                    "disease": 1,
+                    "query_type": 1,
+                    "correction": 1,
+                    "rating": 1,
+                    "_id": 0,
+                },
+            )
+            .sort("feedback_at", -1)
+            .limit(5)
+        )
 
         return {
             "success": True,
@@ -1361,7 +1804,7 @@ async def learning_stats():
             "average_rating": avg_rating,
             "top_conditions": by_condition,
             "recent_corrections": corrections,
-            "model": groq_model,
+            "model": groq_model_primary,
             "status": "Learning journal active — model adapts from rated interactions",
         }
     except Exception as e:
@@ -1414,15 +1857,16 @@ async def run_demo_case(demo_request: dict):
         "title": f"{pd.get('disease', 'Condition')} — {qt} Analysis",
         "ai_analysis": result.get("content", ""),
         "response_time_seconds": round(time.time() - t0, 2),
-        "model": groq_model,
+        "model": result.get("model", groq_model_primary),
     }
 
 
 @api_router.get("/")
 async def api_root():
     return {
-        "message": "IntelliHealth AI Clinical System API v3",
-        "model": groq_model,
+        "message": "IntelliHealth AI Clinical System API v4.1",
+        "model": groq_model_primary,
+        "max_response_tokens": _MAX_RESPONSE_TOKENS,
         "status": "running",
         "docs": "/api/docs",
         "admin": "/admin",
@@ -1431,7 +1875,9 @@ async def api_root():
 
 # Register main router
 app.include_router(api_router)
-
+app.include_router(doctor_router)
+app.include_router(auth_router)
+app.include_router(profile_router)
 
 # ── Admin Dashboard ────────────────────────────────────────────────────────────
 
@@ -1444,11 +1890,13 @@ async def admin_dashboard():
     patient_count = 0
     doctor_count = 0
     try:
-        if _mongo:
+        if _mongo is not None:
             _mongo.admin.command("ping")
             db_ok = True
             patient_count = (
-                patients_collection.count_documents({}) if patients_collection else 0
+                patients_collection.count_documents({})
+                if patients_collection is not None
+                else 0
             )
             auth_db = _mongo[os.getenv("MONGODB_AUTH_DB", "authentication")]
             doctor_count = auth_db["doctors"].count_documents({})
@@ -1474,7 +1922,6 @@ async def admin_dashboard():
         "● Not loaded (loading in background)",
     )
 
-    # Build guideline rows
     gl_rows = ""
     for src_name, src_meta in ada_stats.get("sources", {}).items():
         title = src_meta.get("title", src_name)
@@ -1525,135 +1972,85 @@ async def admin_dashboard():
   .flex-row{{display:flex;gap:12px;flex-wrap:wrap;margin-top:16px}}
   .footer{{text-align:center;color:#9ca3af;font-size:12px;padding:24px;border-top:1px solid #ede9fe;background:#fff;margin-top:8px}}
   code{{background:#f5f3ff;color:#7c3aed;padding:1px 6px;border-radius:4px;font-size:12px;font-family:monospace}}
+  .changelog{{background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:16px 20px;margin-bottom:24px;font-size:13px;color:#166534}}
+  .changelog strong{{display:block;margin-bottom:6px;font-size:14px}}
 </style>
 </head>
 <body>
 <nav class="navbar">
   <div class="navbar-brand">Intelli<span>Health</span> <span style="font-weight:300;font-size:14px">Admin</span></div>
-  <div class="navbar-right">AI Clinical System v3.0</div>
+  <div class="navbar-right">AI Clinical System v4.1</div>
 </nav>
-
 <div class="hero">
   <h1>System Dashboard</h1>
-  <p>IntelliHealth AI Clinical Backend — powered by Gemma (Groq) via Groq</p>
+  <p>IntelliHealth AI Clinical Backend — powered by Llama 3.3 70B (Groq)</p>
+</div>
 <div class="container">
-  <div class="grid">
-    <div class="card">
-      <div class="card-icon">🧑‍⚕️</div>
-      <div class="card-value">{doctor_count}</div>
-      <div class="card-label">Registered Doctors</div>
-    </div>
-    <div class="card">
-      <div class="card-icon">🏥</div>
-      <div class="card-value">{patient_count}</div>
-      <div class="card-label">Total Patients</div>
-    </div>
-    <div class="card">
-      <div class="card-icon">📚</div>
-      <div class="card-value">{guideline_count}</div>
-      <div class="card-label">ADA 2026 Guideline Docs</div>
-    </div>
-    <div class="card">
-      <div class="card-icon">🔖</div>
-      <div class="card-value">{rec_count}</div>
-      <div class="card-label">Indexed Recommendations</div>
-    </div>
-    <div class="card">
-      <div class="card-icon">🩺</div>
-      <div class="card-value">{case_count}</div>
-      <div class="card-label">Clinical Sample Cases</div>
-    </div>
-    <div class="card">
-      <div class="card-icon">🕐</div>
-      <div class="card-value" style="font-size:13px">{now}</div>
-      <div class="card-label">Server Time (UTC)</div>
-    </div>
+  <div class="changelog">
+    <strong>✅ v4.1 Fixes Applied</strong>
+    max_tokens: 1536 → 8192 &nbsp;|&nbsp; ADA fallback filtering active &nbsp;|&nbsp;
+    Guideline context capped at 4000 chars &nbsp;|&nbsp; Richer consultation prompts &nbsp;|&nbsp;
+    temperature: 0.3 → 0.4 &nbsp;|&nbsp; Non-medical blocklist tightened
   </div>
-
+  <div class="grid">
+    <div class="card"><div class="card-icon">🧑‍⚕️</div><div class="card-value">{doctor_count}</div><div class="card-label">Registered Doctors</div></div>
+    <div class="card"><div class="card-icon">🏥</div><div class="card-value">{patient_count}</div><div class="card-label">Total Patients</div></div>
+    <div class="card"><div class="card-icon">📚</div><div class="card-value">{guideline_count}</div><div class="card-label">ADA 2026 Guideline Docs</div></div>
+    <div class="card"><div class="card-icon">🔖</div><div class="card-value">{rec_count}</div><div class="card-label">Indexed Recommendations</div></div>
+    <div class="card"><div class="card-icon">🩺</div><div class="card-value">{case_count}</div><div class="card-label">Clinical Sample Cases</div></div>
+    <div class="card"><div class="card-icon">🕐</div><div class="card-value" style="font-size:13px">{now}</div><div class="card-label">Server Time (UTC)</div></div>
+  </div>
   <div class="section">
     <h2>System Status</h2>
-    <div class="status-row">
-      <span class="status-label">🗄️ MongoDB Database</span>
-      {db_badge}
-    </div>
-        <div class="status-row">
-            <span class="status-label">🤖 Gemma via Groq</span>
-            {ai_badge}
-        </div>
-    <div class="status-row">
-      <span class="status-label">📚 ADA 2026 Guidelines</span>
-      {gl_badge}
-    </div>
-    <div class="status-row">
-      <span class="status-label">📡 AI Model</span>
-      <code>{groq_model}</code>
-    </div>
-    <div class="status-row">
-      <span class="status-label">🔗 Database</span>
-      <code>{db_name}</code>
-    </div>
+    <div class="status-row"><span class="status-label">🗄️ MongoDB Database</span>{db_badge}</div>
+    <div class="status-row"><span class="status-label">🤖 Llama 3.3 70B via Groq</span>{ai_badge}</div>
+    <div class="status-row"><span class="status-label">📚 ADA 2026 Guidelines</span>{gl_badge}</div>
+    <div class="status-row"><span class="status-label">📡 Primary Model</span><code>{groq_model_primary}</code></div>
+    <div class="status-row"><span class="status-label">🔢 Max Response Tokens</span><code>{_MAX_RESPONSE_TOKENS}</code></div>
+    <div class="status-row"><span class="status-label">🔄 Fallback Models</span><code>gpt-oss-120b → gpt-oss-20b → llama-3.1-8b-instant</code></div>
+    <div class="status-row"><span class="status-label">🔗 Database</span><code>{db_name}</code></div>
     <div class="flex-row">
       <a href="/api/docs" class="link-btn">📄 API Docs (Swagger)</a>
       <a href="/api/health" class="link-btn outline">🩺 Health Check</a>
       <a href="/api/list-guidelines" class="link-btn outline">📚 Guidelines Status</a>
     </div>
   </div>
-
   <div class="section">
     <h2>Loaded ADA 2026 Guidelines</h2>
-    <p style="color:#6b7280;font-size:13px;margin-bottom:14px">
-      These documents are auto-loaded at startup. Every AI response cites specific recommendation numbers (14.x, 15.x, 16.x) from these sources.
-    </p>
+    <p style="color:#6b7280;font-size:13px;margin-bottom:14px">Auto-loaded at startup. Every AI response cites specific recommendation numbers with evidence grades [A/B/C/E].</p>
     {gl_rows}
   </div>
-
   <div class="section">
     <h2>Key API Endpoints</h2>
     <ul class="endpoint-list">
-      <li><span class="method post">POST</span><span class="path">/api/clinical-analysis</span><span class="desc">Gemma clinical analysis</span></li>
+      <li><span class="method post">POST</span><span class="path">/api/clinical-analysis</span><span class="desc">AI clinical analysis (8192 token response)</span></li>
       <li><span class="method post">POST</span><span class="path">/api/export-report</span><span class="desc">Download PDF report</span></li>
       <li><span class="method post">POST</span><span class="path">/api/doctor/login</span><span class="desc">Doctor authentication</span></li>
       <li><span class="method post">POST</span><span class="path">/api/doctor/signup</span><span class="desc">Doctor registration</span></li>
       <li><span class="method">GET</span><span class="path">/api/doctor/patients</span><span class="desc">List patients</span></li>
       <li><span class="method post">POST</span><span class="path">/api/doctor/patients</span><span class="desc">Add new patient</span></li>
-      <li><span class="method">GET</span><span class="path">/api/session/{patid}</span><span class="desc">Load chat session</span></li>
-      <li><span class="method post">POST</span><span class="path">/api/session/{patid}/save</span><span class="desc">Save chat session</span></li>
+      <li><span class="method">GET</span><span class="path">/api/session/{{session_id}}</span><span class="desc">Load chat session</span></li>
+      <li><span class="method post">POST</span><span class="path">/api/session/{{session_id}}/save</span><span class="desc">Save chat session</span></li>
       <li><span class="method post">POST</span><span class="path">/api/upload-pdf</span><span class="desc">Upload medical PDF</span></li>
       <li><span class="method post">POST</span><span class="path">/api/upload-guideline</span><span class="desc">Upload ADA guideline</span></li>
     </ul>
   </div>
-
   <div class="section">
     <h2>Frontend Integration</h2>
-    <p style="color:#6b7280;font-size:14px;margin-bottom:12px">
-      Set <code>API_URL</code> in your frontend's <code>apiConfig.js</code> to this backend's deployed URL.
-      The backend supports CORS from all origins.
-    </p>
-    <div class="status-row">
-      <span class="status-label">Frontend (Vercel)</span>
-      <code>health-zeta-three.vercel.app</code>
-    </div>
-    <div class="status-row">
-      <span class="status-label">CORS</span>
-      <span style="color:#16a34a;font-weight:600">✓ All origins allowed</span>
-    </div>
+    <p style="color:#6b7280;font-size:14px;margin-bottom:12px">Set <code>API_URL</code> in your frontend's <code>apiConfig.js</code> to this backend's deployed URL.</p>
+    <div class="status-row"><span class="status-label">Frontend (Vercel)</span><code>health-zeta-three.vercel.app</code></div>
+    <div class="status-row"><span class="status-label">CORS</span><span style="color:#16a34a;font-weight:600">✓ Configured for all diabassist.app subdomains</span></div>
   </div>
 </div>
-
-<div class="footer">
-    © 2026 Elements Interactive · IntelliHealth AI Clinical System · Powered by Gemma via Groq
-</div>
+<div class="footer">© 2026 Elements Interactive · IntelliHealth AI Clinical System v4.1 · Powered by Llama 3.3 70B via Groq</div>
 </body>
 </html>"""
     return HTMLResponse(content=html)
 
 
-# ── Root health for proxy ──────────────────────────────────────────────────────
-
-
 @app.get("/api/healthz")
 async def proxy_health():
-    return {"status": "ok", "service": "IntelliHealth API"}
+    return {"status": "ok", "service": "IntelliHealth API v4.1"}
 
 
 if __name__ == "__main__":

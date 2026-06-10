@@ -1,8 +1,40 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import AppHeader from './AppHeader';
 import { BG_IMG } from './DoctorLogin';
+import { API_URL } from './apiConfig';
 
 const LegalPage = ({ page, onBack, onNavigate }) => {
+  const [guidelinePdfs, setGuidelinePdfs] = useState([]);
+  const [guidelinePdfError, setGuidelinePdfError] = useState('');
+
+  useEffect(() => {
+    if (page !== 'guidelines' && page !== 'clinical-studies') return;
+
+    let isMounted = true;
+    const loadGuidelinePdfs = async () => {
+      try {
+        const response = await fetch(`${API_URL}/api/guideline-pdfs`);
+        const data = await response.json();
+        if (!response.ok || !data?.success) {
+          throw new Error(data?.detail || 'Unable to load guideline PDFs');
+        }
+
+        if (isMounted) {
+          setGuidelinePdfs(data.files || []);
+          setGuidelinePdfError('');
+        }
+      } catch (error) {
+        if (isMounted) {
+          setGuidelinePdfError(error.message || 'Unable to load guideline PDFs');
+          setGuidelinePdfs([]);
+        }
+      }
+    };
+
+    loadGuidelinePdfs();
+    return () => { isMounted = false; };
+  }, [page]);
+
   let title = '';
   let content = null;
 
@@ -96,33 +128,43 @@ const LegalPage = ({ page, onBack, onNavigate }) => {
     content = (
       <div className="legal-content-wrapper">
         <section className="legal-section">
-          <h3>DiabAssist Clinical Guidelines</h3>
+          <h3>Clinical Guideline PDFs</h3>
           <p>
-            These guidelines are designed to support registered clinicians in Pakistan with clear, practical advice for routine diabetes care and management.
+            Select any PDF below to download it directly to your device. These are the guideline documents available for review on this system.
           </p>
         </section>
 
         <section className="legal-section">
-          <h3>1. Patient Data Use</h3>
-          <p>
-            We use patient information only for consultation support, diagnosis aid, and treatment planning. Data entered during verification and consultation is not shared outside the clinic or the DiabAssist system.
-          </p>
-        </section>
-
-        <section className="legal-section">
-          <h3>2. Recommended Clinical Actions</h3>
-          <ul>
-            <li>Confirm patient identity and basic vital signs before proceeding.</li>
-            <li>Review blood glucose readings, blood pressure, and complications history.</li>
-            <li>Use guideline suggestions as a reference, not as a final decision.</li>
-          </ul>
-        </section>
-
-        <section className="legal-section">
-          <h3>3. Local Care Context</h3>
-          <p>
-            Treatment recommendations are intended for healthcare settings in Pakistan. Always cross-check with local practice standards and the patient’s current medication regimen.
-          </p>
+          <div style={{ display: 'grid', gap: '12px' }}>
+            {guidelinePdfs.length > 0 ? (
+              guidelinePdfs.map((pdf) => (
+                <a
+                  key={pdf.name}
+                  href={`${API_URL}/api/download-guideline-pdf/${encodeURIComponent(pdf.name)}`}
+                  download={pdf.name}
+                  style={{
+                    display: 'block',
+                    padding: '14px 16px',
+                    border: '1px solid #dbe4f0',
+                    borderRadius: '14px',
+                    background: 'linear-gradient(135deg, #ffffff 0%, #f8fbff 100%)',
+                    color: '#0f172a',
+                    textDecoration: 'none',
+                    boxShadow: '0 8px 18px rgba(15, 23, 42, 0.08)',
+                  }}
+                >
+                  <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '4px' }}>{pdf.name}</div>
+                  <div style={{ color: '#475569', fontSize: '12px' }}>
+                    {Math.max(1, Math.round(pdf.size / 1024))} KB • Click to download
+                  </div>
+                </a>
+              ))
+            ) : (
+              <div style={{ padding: '14px 16px', border: '1px dashed #cbd5e1', borderRadius: '12px', color: '#475569' }}>
+                {guidelinePdfError ? guidelinePdfError : 'Loading guideline PDFs…'}
+              </div>
+            )}
+          </div>
         </section>
       </div>
     );
@@ -131,33 +173,41 @@ const LegalPage = ({ page, onBack, onNavigate }) => {
     content = (
       <div className="legal-content-wrapper">
         <section className="legal-section">
-          <h3>Pakistan-Focused Clinical Evidence</h3>
-          <p>
-            This section highlights clinical findings and study notes relevant to diabetes care in Pakistan.
-          </p>
+          <h3>Clinical Study PDFs</h3>
+          <p>Download the available PDF documents directly from this page.</p>
         </section>
 
         <section className="legal-section">
-          <h3>1. Local Population Considerations</h3>
-          <p>
-            Diabetes patterns in Pakistan often include high rates of type 2 diabetes, hypertension, and complications linked to diet and access to regular monitoring. Clinical decisions should reflect these realities.
-          </p>
-        </section>
-
-        <section className="legal-section">
-          <h3>2. Study Summary</h3>
-          <p>
-            Recent studies in Pakistan show that patient compliance, medication affordability, and primary care follow-up are key factors in effective diabetes management.
-          </p>
-        </section>
-
-        <section className="legal-section">
-          <h3>3. Practical Notes for Pakistani Clinicians</h3>
-          <ul>
-            <li>Encourage regular glucose monitoring and documentation.</li>
-            <li>Explain treatment adjustments in the local language and cultural context.</li>
-            <li>Consider patient access to medicines when recommending therapy changes.</li>
-          </ul>
+          <div style={{ display: 'grid', gap: '12px' }}>
+            {guidelinePdfs.length > 0 ? (
+              guidelinePdfs.map((pdf) => (
+                <a
+                  key={pdf.name}
+                  href={`${API_URL}/api/download-guideline-pdf/${encodeURIComponent(pdf.name)}`}
+                  download={pdf.name}
+                  style={{
+                    display: 'block',
+                    padding: '14px 16px',
+                    border: '1px solid #dbe4f0',
+                    borderRadius: '14px',
+                    background: 'linear-gradient(135deg, #ffffff 0%, #f8fbff 100%)',
+                    color: '#0f172a',
+                    textDecoration: 'none',
+                    boxShadow: '0 8px 18px rgba(15, 23, 42, 0.08)',
+                  }}
+                >
+                  <div style={{ fontWeight: 700, fontSize: '15px', marginBottom: '4px' }}>{pdf.name}</div>
+                  <div style={{ color: '#475569', fontSize: '12px' }}>
+                    {Math.max(1, Math.round(pdf.size / 1024))} KB • Click to download
+                  </div>
+                </a>
+              ))
+            ) : (
+              <div style={{ padding: '14px 16px', border: '1px dashed #cbd5e1', borderRadius: '12px', color: '#475569' }}>
+                {guidelinePdfError ? guidelinePdfError : 'Loading PDF files…'}
+              </div>
+            )}
+          </div>
         </section>
       </div>
     );
